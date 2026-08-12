@@ -8,41 +8,38 @@ Web-App zum Erstellen von Dienstplänen mit:
 - **Krankenstand & Abwesenheiten** – erfassen und automatisch kompensieren
 - **Mobile Nutzung** – Bottom-Navigation, Tag-Ansicht, als App auf dem Homescreen speicherbar
 
-## Windows-Server (wichtig)
+## Windows-Server – bitte zuerst lesen
 
-Wenn das Startfenster **„Arbeitsplan…“** zeigt und nach Node/npm nichts passiert:  
-Sie sind im **falschen/unvollständigen Ordner**.
+Wenn die Start-Datei nach `node -v` / `npm -v` stehen bleibt: Sie haben sehr
+wahrscheinlich den **falschen Ordner** (z. B. nur `server.js`).
 
-1. Neu laden: [Branch-ZIP](https://github.com/xXLaser/Schichtplaner/archive/refs/heads/cursor/schichtplaner-tool-94b2.zip)
-2. Nach `C:\Schichtwerk` entpacken (`package.json` und `src` müssen direkt dort liegen)
-3. **`00-START.bat`** ausführen (Titel muss „SCHICHTWERK - 00-START“ zeigen)
+**→ [`BITTE-LESEN.txt`](BITTE-LESEN.txt)**  
+**→ [`ANLEITUNG-SERVER.txt`](ANLEITUNG-SERVER.txt)**
 
-Details: [`ANLEITUNG-SERVER.txt`](ANLEITUNG-SERVER.txt) · [`INSTALLATION-WINDOWS.md`](INSTALLATION-WINDOWS.md)
+Schnellweg:
 
-## Installation unter Windows (empfohlen)
+1. Branch-ZIP laden:  
+   https://github.com/xXLaser/Schichtplaner/archive/refs/heads/cursor/schichtplaner-tool-94b2.zip
+2. Nach `C:\Schichtwerk` entpacken (dort muss `package.json` direkt liegen)
+3. `PRUEFEN.bat` → dann `starten-server-fenster-offen.bat`  
+   oder einfach `INSTALLIEREN.bat`
+
+## Installation unter Windows (PC)
 
 **→ [INSTALLATION-WINDOWS.md](INSTALLATION-WINDOWS.md)**
-
-Kurzfassung nach der Ersteinrichtung:
-
-1. Doppelklick auf `starten.bat` oder `00-START.bat`
-2. Browser öffnen: [http://localhost:3000](http://localhost:3000)
-
-### Handy / Tablet
-
-1. Dieselbe Adresse im Handy-Browser öffnen (im gleichen WLAN, wenn der PC als Server läuft – oder gehostet)
-2. Optional: „Zum Home-Bildschirm“ / „Add to Home Screen“ – dann wie eine App
 
 ## Starten (für Fortgeschrittene)
 
 ```bash
 npm install
-npx prisma migrate dev
+npx prisma migrate deploy
 npm run db:seed
-npm run dev
+npm run build
+npm start
 ```
 
-App: [http://localhost:3000](http://localhost:3000)
+App: [http://localhost:3000](http://localhost:3000)  
+Diagnose: [http://localhost:3000/api/health](http://localhost:3000/api/health)
 
 ## Technik
 
@@ -50,12 +47,3 @@ App: [http://localhost:3000](http://localhost:3000)
 - Prisma + SQLite
 - Tailwind CSS
 - PWA-Manifest für mobile Homescreen-Nutzung
-
-## Ablauf
-
-1. Kompetenzen anlegen (z. B. Schichtleitung, Maschinenführung)
-2. Mitarbeiter mit Kompetenzen und Urlaubskontingent pflegen
-3. Schichten und Mindestanzahlen je Kompetenz konfigurieren
-4. Urlaub im **Urlaubsplaner** eintragen / genehmigen
-5. Krankenstände unter Abwesenheiten erfassen
-6. Im Dienstplan „Plan neu generieren“ – Kompensation und Kompetenzlücken

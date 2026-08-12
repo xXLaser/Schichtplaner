@@ -1,0 +1,82 @@
+================================================================================
+WICHTIG – IHR SCREENSHOT ZEIGT DAS FALSCHE PROGRAMM
+================================================================================
+
+In C:\Urlaubsplaner liegen nur:
+  - server.js
+  - konfiguration
+  - starten-server.bat
+  - starten-server-fenster-offen.bat
+
+Das ist NICHT Schichtwerk.
+
+Schichtwerk braucht u.a.:
+  - package.json
+  - src\
+  - prisma\
+  - scripts\prepare-server.cjs
+  - viele weitere Dateien
+
+Ihre BAT-Datei zeigt "Urlaubsplaner ..." und endet nach node -v / npm -v.
+Deshalb passiert nichts Weiteres.
+
+
+LOESUNG IN 3 SCHRITTEN
+----------------------
+
+Variante A (einfachste):
+
+1. Auf dem Server diesen ZIP herunterladen:
+   https://github.com/xXLaser/Schichtplaner/archive/refs/heads/cursor/schichtplaner-tool-94b2.zip
+
+2. Rechtsklick auf die ZIP -> Alle extrahieren nach:
+
+      C:\Schichtwerk
+
+   Danach MUSS existieren:
+
+      C:\Schichtwerk\package.json
+      C:\Schichtwerk\INSTALLIEREN.bat
+      C:\Schichtwerk\starten-server.bat
+      C:\Schichtwerk\PRUEFEN.bat
+
+   Wenn package.json erst in einem Unterordner liegt:
+   alle Dateien EINE Ebene nach oben nach C:\Schichtwerk verschieben.
+
+3. Doppelklick auf:
+
+      C:\Schichtwerk\PRUEFEN.bat
+      (alles [OK]?)
+
+   danach:
+
+      C:\Schichtwerk\starten-server-fenster-offen.bat
+
+
+Variante B (automatisch):
+
+1. ZIP wie oben laden und so entpacken, dass INSTALLIEREN.bat sichtbar ist
+2. Doppelklick auf INSTALLIEREN.bat
+3. Warten (Download/Build kann mehrere Minuten dauern)
+4. Test im Browser:
+
+      http://localhost:3000/api/health
+
+
+C:\Urlaubsplaner
+----------------
+Diesen Ordner koennen Sie stehen lassen, aber NICHT weiter zum Starten
+von Schichtwerk verwenden.
+
+
+Firewall
+--------
+Port 3000 TCP eingehend freigeben.
+
+
+Wenn es wieder hakt
+-------------------
+Screenshot von:
+  1) Explorer mit Inhalt von C:\Schichtwerk
+  2) schwarzem Fenster NACH dem Start
+================================================================================
