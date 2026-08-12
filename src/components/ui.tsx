@@ -158,3 +158,31 @@ export function EmptyState({ text }: { text: string }) {
     </p>
   );
 }
+
+export function ErrorBanner({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="mb-6 rounded-xl border border-[var(--danger)]/30 bg-[#fff1f2] p-4">
+      <p className="text-sm font-semibold text-[var(--danger)]">Daten konnten nicht geladen werden</p>
+      <p className="mt-1 text-sm text-[var(--ink-soft)]">{message}</p>
+      <p className="mt-2 text-xs text-[var(--muted)]">
+        Prüfen Sie auf dem Server:{" "}
+        <code className="rounded bg-white px-1">http://SERVER:3000/api/health</code>
+      </p>
+      {onRetry ? (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-3 inline-flex rounded-md bg-[var(--danger)] px-3 py-1.5 text-sm font-medium text-white"
+        >
+          Erneut versuchen
+        </button>
+      ) : null}
+    </div>
+  );
+}

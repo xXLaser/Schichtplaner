@@ -8,7 +8,9 @@ import {
   Input,
   Badge,
   EmptyState,
+  ErrorBanner,
 } from "@/components/ui";
+import { apiGet, apiSend } from "@/lib/api";
 
 type Competency = { id: string; name: string; color: string };
 type Employee = {
@@ -31,16 +33,30 @@ export default function MitarbeiterPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
-    const [e, c] = await Promise.all([
-      fetch("/api/employees").then((r) => r.json()),
-      fetch("/api/competencies").then((r) => r.json()),
-    ]);
-    setEmployees(e);
-    setCompetencies(c);
-    setLoading(false);
+    setError(null);
+    try {
+      const [e, c] = await Promise.all([
+        apiGet<Employee[]>("/api/employees"),
+        apiGet<Competency[]>("/api/competencies"),
+      ]);
+      if (!Array.isArray(e) || !Array.isArray(c)) {
+        throw new Error(
+          "Unerwartete Serverantwort. Oft fehlt die Datenbank oder der Seed.",
+        );
+      }
+      setEmployees(e);
+      setCompetencies(c);
+    } catch (err) {
+      setEmployees([]);
+      setCompetencies([]);
+      setError(err instanceof Error ? err.message : "Unbekannter Fehler");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -82,36 +98,38 @@ export default function MitarbeiterPage() {
       active: true,
     };
 
-    if (editing) {
-      await fetch(`/api/employees/${editing.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } else {
-      await fetch("/api/employees", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+    try {
+      if (editing) {
+        await apiSend(`/api/employees/${editing.id}`, "PATCH", payload);
+      } else {
+        await apiSend("/api/employees", "POST", payload);
+      }
+      resetForm();
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
     }
-    resetForm();
-    await load();
   }
 
   async function remove(id: string) {
     if (!confirm("Mitarbeiter wirklich löschen?")) return;
-    await fetch(`/api/employees/${id}`, { method: "DELETE" });
-    await load();
+    try {
+      await apiSend(`/api/employees/${id}`, "DELETE");
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Löschen fehlgeschlagen");
+    }
   }
 
   async function toggleActive(emp: Employee) {
-    await fetch(`/api/employees/${emp.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ active: !emp.active }),
-    });
-    await load();
+    try {
+      await apiSend(`/api/employees/${emp.id}`, "PATCH", {
+        active: !emp.active,
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Aktualisieren fehlgeschlagen");
+    }
   }
 
   return (
@@ -120,6 +138,8 @@ export default function MitarbeiterPage() {
         title="Mitarbeiter"
         subtitle="Kompetenzen pro Person hinterlegen – der Planer setzt nur passende Leute ein."
       />
+
+      {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
 
       <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
         <Panel>

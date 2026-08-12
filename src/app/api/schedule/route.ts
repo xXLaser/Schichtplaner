@@ -1,18 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateSchedule, getSchedule } from "@/lib/scheduler";
 import { z } from "zod";
+import { apiError } from "@/lib/api-error";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const from = req.nextUrl.searchParams.get("from");
-  const to = req.nextUrl.searchParams.get("to");
-  if (!from || !to) {
-    return NextResponse.json(
-      { error: "from und to sind erforderlich (YYYY-MM-DD)" },
-      { status: 400 },
-    );
+  try {
+    const from = req.nextUrl.searchParams.get("from");
+    const to = req.nextUrl.searchParams.get("to");
+    if (!from || !to) {
+      return NextResponse.json(
+        { error: "from und to sind erforderlich (YYYY-MM-DD)" },
+        { status: 400 },
+      );
+    }
+    const data = await getSchedule(from, to);
+    return NextResponse.json(data);
+  } catch (error) {
+    return apiError(error, "Dienstplan konnte nicht geladen werden");
   }
-  const data = await getSchedule(from, to);
-  return NextResponse.json(data);
 }
 
 const schema = z.object({
@@ -22,9 +29,13 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const body = schema.parse(await req.json());
-  const result = await generateSchedule(body.startDate, body.endDate, {
-    replaceExisting: body.replaceExisting ?? true,
-  });
-  return NextResponse.json(result);
+  try {
+    const body = schema.parse(await req.json());
+    const result = await generateSchedule(body.startDate, body.endDate, {
+      replaceExisting: body.replaceExisting ?? true,
+    });
+    return NextResponse.json(result);
+  } catch (error) {
+    return apiError(error, "Dienstplan konnte nicht erzeugt werden");
+  }
 }

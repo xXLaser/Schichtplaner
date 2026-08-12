@@ -70,14 +70,26 @@ export default function DienstplanPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setMessage(null);
     try {
       const res = await fetch(`/api/schedule?from=${week}&to=${end}`);
       const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error ?? `Fehler ${res.status}`);
+      }
+      if (!json.days) {
+        throw new Error(
+          "Dienstplan-Antwort ungültig. Prüfen Sie /api/health auf dem Server.",
+        );
+      }
       setData(json);
       if (json.days?.length) {
         const today = toISODate(new Date());
         setMobileDay(json.days.includes(today) ? today : json.days[0]);
       }
+    } catch (err) {
+      setData(null);
+      setMessage(err instanceof Error ? err.message : "Laden fehlgeschlagen");
     } finally {
       setLoading(false);
     }
@@ -174,6 +186,18 @@ export default function DienstplanPage() {
           </span>
         ) : null}
       </div>
+
+      {message && !data && !loading ? (
+        <Panel className="mb-6 border-[var(--danger)]/30 bg-[#fff1f2]">
+          <p className="text-sm font-semibold text-[var(--danger)]">
+            Daten konnten nicht geladen werden
+          </p>
+          <p className="mt-1 text-sm">{message}</p>
+          <p className="mt-2 text-xs text-[var(--muted)]">
+            Diagnose: <code>/api/health</code> im Browser öffnen
+          </p>
+        </Panel>
+      ) : null}
 
       {warnings.length > 0 ? (
         <Panel className="mb-6 border-[var(--warn)]/40 bg-[#fff7ed]">

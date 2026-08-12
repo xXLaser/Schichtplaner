@@ -37,9 +37,15 @@ if not exist ".env" (
   )
 )
 
+echo  Umgebungsdatei wird geprueft ...
+call node scripts\ensure-env.cjs
+
 if not exist "prisma\dev.db" (
   echo  Datenbank wird eingerichtet ...
-  call npx prisma migrate dev --name init
+  call npx prisma migrate deploy
+  if errorlevel 1 (
+    call npx prisma migrate dev --name init
+  )
   if errorlevel 1 (
     echo.
     echo  FEHLER bei der Datenbank-Einrichtung.

@@ -239,9 +239,51 @@ Die Installation (`npm install` usw.) müssen Sie **nicht** jedes Mal wiederhole
 - PC neu starten
 - Danach `node -v` erneut prüfen
 
+### Seite lädt, aber Mitarbeiter / Daten fehlen (häufig auf Windows-Server)
+
+Die Oberfläche kommt aus dem Browser, die Daten kommen separat von `/api/...`.  
+Wenn die Datenbank fehlt oder falsch verdrahtet ist, bleibt die Seite „leer“.
+
+**Sofort-Diagnose:** Im Browser öffnen:
+
+```text
+http://SERVER-IP:3000/api/health
+```
+
+- Steht dort `"ok": true` und `employees` > 0 → Datenbank ist in Ordnung.
+- Steht dort `"ok": false` oder ein `error` → Datenbankproblem (siehe unten).
+- Seite gar nicht erreichbar → Firewall/Port (siehe nächster Punkt).
+
+**Reparatur auf dem Server (Eingabeaufforderung im Projektordner):**
+
+```text
+node scripts\ensure-env.cjs
+npx prisma generate
+npx prisma migrate deploy
+npm run db:seed
+```
+
+Danach den Server neu starten mit:
+
+```text
+starten-server.bat
+```
+
+(nicht nur „Node.js“ in der Firewall freigeben – besser **Port 3000 TCP** eingehend erlauben)
+
+### Firewall auf dem Windows-Server
+
+Nicht nur das Programm „Node.js“ freigeben, sondern den **Port**:
+
+1. Windows-Firewall → Erweiterte Einstellungen  
+2. Eingehende Regeln → Neue Regel → Port → TCP → **3000** → Zulassen  
+3. Für Domäne/Privat/Öffentlich nach Bedarf aktivieren  
+
+Test von einem anderen PC: `http://SERVER-IP:3000/api/health`
+
 ### Seite im Browser lädt nicht
-- Prüfen, ob das schwarze Fenster noch offen ist und `npm run dev` läuft
-- Adresse genau so eingeben: `http://localhost:3000`
+- Prüfen, ob das schwarze Fenster noch offen ist und der Server läuft
+- Adresse genau so eingeben: `http://localhost:3000` (am Server selbst)
 - Firewall-Hinweis von Windows ggf. erlauben
 
 ### Fehler bei `npm install`
@@ -253,10 +295,10 @@ Die Installation (`npm install` usw.) müssen Sie **nicht** jedes Mal wiederhole
 Ein anderes Programm nutzt bereits Port 3000. Dann starten mit:
 
 ```text
-npm run dev -- --port 3001
+npm run start -- --port 3001
 ```
 
-Und im Browser öffnen: `http://localhost:3001`
+Und im Browser öffnen: `http://SERVER-IP:3001`
 
 ### Alles zurücksetzen (Beispieldaten neu)
 Nur wenn Sie die Datenbank komplett neu aufsetzen wollen:
@@ -269,15 +311,33 @@ Achtung: Dadurch werden bestehende Einträge gelöscht und die Beispieldaten neu
 
 ---
 
+## Windows-Server / Dauerbetrieb
+
+Für den Einsatz auf einem dedizierten Server:
+
+1. Projekt z. B. nach `C:\Schichtwerk` legen (kein Netzlaufwerk)
+2. Doppelklick auf **`starten-server.bat`**
+   - richtet `.env` mit absolutem Datenbankpfad ein
+   - führt Migrationen aus
+   - lädt Beispieldaten, falls leer
+   - startet den Server für Netzwerzugriff (`0.0.0.0:3000`)
+3. Firewall: Port **3000 TCP** freigeben
+4. Im Browser testen: `http://SERVER-IP:3000/api/health`
+
+Das Fenster von `starten-server.bat` muss offen bleiben. Für echten Dauerbetrieb kann die IT später einen Windows-Dienst einrichten.
+
+---
+
 ## Für die IT / Fortgeschrittene (kurz)
 
 | Thema | Hinweis |
 | --- | --- |
 | Technik | Next.js, Prisma, SQLite |
-| Datenbankdatei | liegt lokal unter `prisma/dev.db` |
-| Netzwerk | Standard nur auf dem eigenen PC (`localhost`) |
-| Mehrere Nutzer | aktuell für Einzelplatz gedacht; für Team-Betrieb wäre ein Server/Hosting nötig |
-| Updates | neuen Stand von GitHub holen, dann `npm install` und ggf. `npx prisma migrate dev` |
+| Datenbankdatei | lokal unter `prisma/dev.db` (absoluter Pfad in `.env`) |
+| Netzwerk | `starten-server.bat` bindet an `0.0.0.0:3000` |
+| Diagnose | `GET /api/health` |
+| Mehrere Nutzer | im LAN nutzbar; für Internet besser Reverse-Proxy + HTTPS |
+| Updates | neuen Stand holen, dann `npm install`, `npx prisma migrate deploy`, Server neu starten |
 
 ---
 
@@ -287,6 +347,7 @@ Wenn etwas hängen bleibt, notieren Sie bitte:
 
 1. den genauen Schritt (z. B. „bei npm install“)
 2. den kompletten Fehlertext aus dem schwarzen Fenster
-3. die Ausgabe von `node -v` und `npm -v`
+3. die Ausgabe von `http://SERVER:3000/api/health`
+4. die Ausgabe von `node -v` und `npm -v`
 
 Damit lässt sich das Problem meist schnell finden.

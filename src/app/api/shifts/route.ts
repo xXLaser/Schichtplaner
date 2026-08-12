@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { apiError } from "@/lib/api-error";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const shifts = await prisma.shiftTemplate.findMany({
-    orderBy: { sortOrder: "asc" },
-    include: {
-      requirements: { include: { competency: true } },
-    },
-  });
-  return NextResponse.json(shifts);
+  try {
+    const shifts = await prisma.shiftTemplate.findMany({
+      orderBy: { sortOrder: "asc" },
+      include: {
+        requirements: { include: { competency: true } },
+      },
+    });
+    return NextResponse.json(shifts);
+  } catch (error) {
+    return apiError(error, "Schichten konnten nicht geladen werden");
+  }
 }
 
 const schema = z.object({
@@ -30,27 +37,31 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const body = schema.parse(await req.json());
-  const shift = await prisma.shiftTemplate.create({
-    data: {
-      name: body.name,
-      startTime: body.startTime,
-      endTime: body.endTime,
-      color: body.color,
-      active: body.active ?? true,
-      sortOrder: body.sortOrder ?? 0,
-      requirements: body.requirements
-        ? {
-            create: body.requirements
-              .filter((r) => r.minCount > 0)
-              .map((r) => ({
-                competencyId: r.competencyId,
-                minCount: r.minCount,
-              })),
-          }
-        : undefined,
-    },
-    include: { requirements: { include: { competency: true } } },
-  });
-  return NextResponse.json(shift, { status: 201 });
+  try {
+    const body = schema.parse(await req.json());
+    const shift = await prisma.shiftTemplate.create({
+      data: {
+        name: body.name,
+        startTime: body.startTime,
+        endTime: body.endTime,
+        color: body.color,
+        active: body.active ?? true,
+        sortOrder: body.sortOrder ?? 0,
+        requirements: body.requirements
+          ? {
+              create: body.requirements
+                .filter((r) => r.minCount > 0)
+                .map((r) => ({
+                  competencyId: r.competencyId,
+                  minCount: r.minCount,
+                })),
+            }
+          : undefined,
+      },
+      include: { requirements: { include: { competency: true } } },
+    });
+    return NextResponse.json(shift, { status: 201 });
+  } catch (error) {
+    return apiError(error, "Schicht konnte nicht angelegt werden");
+  }
 }

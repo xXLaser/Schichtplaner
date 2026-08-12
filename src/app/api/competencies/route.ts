@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
+import { apiError } from "@/lib/api-error";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const competencies = await prisma.competency.findMany({
-    orderBy: { name: "asc" },
-    include: { _count: { select: { employees: true, requirements: true } } },
-  });
-  return NextResponse.json(competencies);
+  try {
+    const competencies = await prisma.competency.findMany({
+      orderBy: { name: "asc" },
+      include: { _count: { select: { employees: true, requirements: true } } },
+    });
+    return NextResponse.json(competencies);
+  } catch (error) {
+    return apiError(error, "Kompetenzen konnten nicht geladen werden");
+  }
 }
 
 const schema = z.object({
@@ -17,7 +24,11 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  const body = schema.parse(await req.json());
-  const competency = await prisma.competency.create({ data: body });
-  return NextResponse.json(competency, { status: 201 });
+  try {
+    const body = schema.parse(await req.json());
+    const competency = await prisma.competency.create({ data: body });
+    return NextResponse.json(competency, { status: 201 });
+  } catch (error) {
+    return apiError(error, "Kompetenz konnte nicht angelegt werden");
+  }
 }
