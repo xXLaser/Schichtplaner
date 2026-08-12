@@ -22,17 +22,17 @@ if exist "package.json" (
   set OK=0
 )
 
-if exist "starten-server.bat" (
-  echo [OK] starten-server.bat gefunden
+if exist "WINDOWS-DIENST-INSTALLIEREN.bat" (
+  echo [OK] WINDOWS-DIENST-INSTALLIEREN.bat gefunden
 ) else (
-  echo [FEHLER] starten-server.bat FEHLT
+  echo [FEHLER] WINDOWS-DIENST-INSTALLIEREN.bat FEHLT
   set OK=0
 )
 
-if exist "scripts\prepare-server.cjs" (
-  echo [OK] scripts\prepare-server.cjs gefunden
+if exist "scripts\build-windows-dienst-paket.cjs" (
+  echo [OK] scripts\build-windows-dienst-paket.cjs gefunden
 ) else (
-  echo [FEHLER] scripts\prepare-server.cjs FEHLT
+  echo [FEHLER] scripts\build-windows-dienst-paket.cjs FEHLT
   echo          Das ist nicht der aktuelle Schichtwerk-Stand.
   set OK=0
 )
@@ -48,6 +48,13 @@ if exist "prisma\schema.prisma" (
   echo [OK] prisma\schema.prisma gefunden
 ) else (
   echo [FEHLER] prisma\schema.prisma FEHLT
+  set OK=0
+)
+
+if exist "Dockerfile" (
+  echo [OK] Dockerfile gefunden ^(fuer Docker-Variante^)
+) else (
+  echo [FEHLER] Dockerfile FEHLT
   set OK=0
 )
 
@@ -70,13 +77,24 @@ if errorlevel 1 (
   npm -v
 )
 
+where docker >nul 2>&1
+if errorlevel 1 (
+  echo [HINWEIS] Docker nicht gefunden - Windows-Dienst-Variante nutzen
+) else (
+  echo [OK] Docker:
+  docker -v
+)
+
 echo.
 echo ----------------------------------------
 if "%OK%"=="1" (
   echo ERGEBNIS: Ordner ist korrekt.
   echo.
-  echo Als Naechstes starten:
-  echo   starten-server-fenster-offen.bat
+  echo Als Naechstes starten ^(als Administrator^):
+  echo   WINDOWS-DIENST-INSTALLIEREN.bat
+  echo.
+  echo Oder mit Docker ^(falls installiert^):
+  echo   docker compose up -d --build
 ) else (
   echo ERGEBNIS: Installation ist NICHT bereit.
   echo.

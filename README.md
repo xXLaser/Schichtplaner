@@ -8,21 +8,20 @@ Web-App zum Erstellen von Dienstplänen mit:
 - **Krankenstand & Abwesenheiten** – erfassen und automatisch kompensieren
 - **Mobile Nutzung** – Bottom-Navigation, Tag-Ansicht, als App auf dem Homescreen speicherbar
 
-## Windows-Server – bitte zuerst lesen
+## Windows-Server – Dauerbetrieb
 
-Wenn die Start-Datei nach `node -v` / `npm -v` stehen bleibt: Sie haben sehr
-wahrscheinlich den **falschen Ordner** (z. B. nur `server.js`).
+**→ [`ANLEITUNG-SERVER.txt`](ANLEITUNG-SERVER.txt)** – vollständige Anleitung für beide Wege
 
-**→ [`BITTE-LESEN.txt`](BITTE-LESEN.txt)**  
-**→ [`ANLEITUNG-SERVER.txt`](ANLEITUNG-SERVER.txt)**
+Zwei Wege, jeweils mit automatischem Neustart bei Windows-Boot, ohne offenes Fenster:
 
-Schnellweg:
+| Weg | Wann nutzen | Start |
+| --- | --- | --- |
+| **Windows-Dienst** (empfohlen) | Kein Docker auf dem Server nötig | `PRUEFEN.bat`, dann `WINDOWS-DIENST-INSTALLIEREN.bat` (als Administrator) |
+| **Docker** | Docker/WSL2 bereits vorhanden | `docker compose up -d --build` |
 
-1. Branch-ZIP laden:  
-   https://github.com/xXLaser/Schichtplaner/archive/refs/heads/cursor/schichtplaner-tool-94b2.zip
-2. Nach `C:\Schichtwerk` entpacken (dort muss `package.json` direkt liegen)
-3. `PRUEFEN.bat` → dann `starten-server-fenster-offen.bat`  
-   oder einfach `INSTALLIEREN.bat`
+Danach testen: `http://SERVER-IP:3000/api/health`
+
+Falls die Startdatei nach `node -v` stehen bleibt: sehr wahrscheinlich der **falsche Ordner** (z. B. nur `server.js` statt des vollständigen Projekts). Siehe `ANLEITUNG-SERVER.txt` → Schritt 0.
 
 ## Installation unter Windows (PC)
 

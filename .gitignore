@@ -58,3 +58,8 @@ prisma/*.db-journal
 .claude/
 .windsurf/
 skills-lock.json
+
+# Windows-Dienst Buildpaket / Server-Tools
+/dist-windows-dienst/
+/tools/
+*.log

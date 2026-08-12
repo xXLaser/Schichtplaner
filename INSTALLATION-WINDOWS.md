@@ -257,19 +257,11 @@ http://SERVER-IP:3000/api/health
 **Reparatur auf dem Server (Eingabeaufforderung im Projektordner):**
 
 ```text
-node scripts\ensure-env.cjs
-npx prisma generate
 npx prisma migrate deploy
 npm run db:seed
 ```
 
-Danach den Server neu starten mit:
-
-```text
-starten-server.bat
-```
-
-(nicht nur „Node.js“ in der Firewall freigeben – besser **Port 3000 TCP** eingehend erlauben)
+Danach den Dienst neu starten (siehe Abschnitt „Windows-Server / Dauerbetrieb“ unten).
 
 ### Firewall auf dem Windows-Server
 
@@ -292,13 +284,13 @@ Test von einem anderen PC: `http://SERVER-IP:3000/api/health`
 - Antivirus kurz prüfen, ob er den Ordner blockiert
 
 ### Port 3000 schon belegt
-Ein anderes Programm nutzt bereits Port 3000. Dann starten mit:
+Ein anderes Programm nutzt bereits Port 3000. Prüfen mit:
 
 ```text
-npm run start -- --port 3001
+netstat -ano | findstr :3000
 ```
 
-Und im Browser öffnen: `http://SERVER-IP:3001`
+Den blockierenden Prozess beenden oder Schichtwerk auf einen anderen Port legen (siehe `ANLEITUNG-SERVER.txt`).
 
 ### Alles zurücksetzen (Beispieldaten neu)
 Nur wenn Sie die Datenbank komplett neu aufsetzen wollen:
@@ -313,30 +305,36 @@ Achtung: Dadurch werden bestehende Einträge gelöscht und die Beispieldaten neu
 
 ## Windows-Server / Dauerbetrieb
 
-Für den Einsatz auf einem dedizierten Server lesen Sie zuerst:
+Für den Einsatz auf einem dedizierten Server (läuft dauerhaft, startet automatisch mit Windows, kein offenes Fenster nötig) lesen Sie zuerst:
 
 **→ [`ANLEITUNG-SERVER.txt`](ANLEITUNG-SERVER.txt)**
 
-Kurzfassung:
+Es gibt zwei Wege:
 
-1. Aktuellen Stand nach **`C:\Schichtwerk`** entpacken (nicht unter Downloads verschachteln)
+| Weg | Wann | Start |
+| --- | --- | --- |
+| **Windows-Dienst** (empfohlen) | Kein Docker vorhanden | `PRUEFEN.bat`, dann `WINDOWS-DIENST-INSTALLIEREN.bat` als Administrator |
+| **Docker** | Docker/WSL2 bereits eingerichtet | `docker compose up -d --build` |
+
+Kurzfassung Windows-Dienst:
+
+1. Aktuellen Stand nach **`C:\Schichtwerk`** entpacken (nicht unter Downloads verschachteln – dort muss `package.json` direkt liegen)
 2. **`PRUEFEN.bat`** ausführen – überall `[OK]`
-3. **`starten-server-fenster-offen.bat`** starten
+3. Rechtsklick auf **`WINDOWS-DIENST-INSTALLIEREN.bat`** → „Als Administrator ausführen“
 4. Firewall: Port **3000 TCP** freigeben
 5. Test: `http://SERVER-IP:3000/api/health`
 
-### starten-server.bat schließt sich / es passiert nichts
+Der Dienst heißt danach „Schichtwerk“ und ist über `services.msc` verwaltbar (Starten/Stoppen/Neustarten), ganz ohne Konsolenfenster.
 
-Sehr häufige Ursache laut Praxis: **falscher Ordner** (mehrfach entpacktes ZIP unter Downloads) oder **alte BAT-Datei**.
+### Es passiert nichts / Startdatei bricht ab
+
+Sehr häufige Ursache: **falscher Ordner** (z. B. ein alter Download mit nur `server.js`, oder ein mehrfach verschachteltes ZIP).
 
 1. `PRUEFEN.bat` im Projektordner starten  
 2. Wenn dort Fehler stehen: neu nach `C:\Schichtwerk` entpacken  
 3. Branch-ZIP:  
    https://github.com/xXLaser/Schichtplaner/archive/refs/heads/cursor/schichtplaner-tool-94b2.zip  
-4. `starten-server-fenster-offen.bat` verwenden und den Text lesen  
-
-Unser aktuelles Startfenster zeigt den Titel **„Schichtwerk - Windows Server Start“**.  
-Steht dort etwas anderes (z. B. nur „Schichtplaner…“), ist es die falsche Datei.
+4. Danach erneut `WINDOWS-DIENST-INSTALLIEREN.bat` als Administrator ausführen und die Meldungen lesen
 
 ---
 
