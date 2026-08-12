@@ -15,9 +15,20 @@ const schema = z.object({
   shiftPreference: z.enum(["ANY", "DAY_ONLY", "NIGHT_ONLY", "ROTATING"]).optional(),
   rotationWeeks: z.number().int().min(1).max(12).optional(),
   rotationStartDate: z.string().optional().nullable(),
-  rotationStartKind: z.enum(["DAY", "NIGHT"]).optional(),
+  rotationStartKind: z.enum(["DAY", "NIGHT", "INTERMEDIATE"]).optional(),
   targetHours: z.number().min(0).max(1000).optional().nullable(),
   hoursPeriod: z.enum(["MONTH", "QUARTER"]).optional(),
+  employmentType: z.enum(["FULL_TIME", "PART_TIME"]).optional(),
+  dutyModel: z.enum(["ROTATION_4_4", "WEEKDAYS", "CUSTOM"]).optional(),
+  dutyOnDays: z.number().int().min(1).max(14).optional(),
+  dutyOffDays: z.number().int().min(0).max(14).optional(),
+  dutyCycleStartDate: z.string().optional().nullable(),
+  allowFifthShiftPerMonth: z.boolean().optional(),
+  partTimeStartTime: z.string().optional(),
+  partTimeEndTime: z.string().optional(),
+  workWeekdays: z.string().optional(),
+  allowIntermediateShifts: z.boolean().optional(),
+  defaultShiftTemplateId: z.string().optional().nullable(),
 });
 
 export async function PATCH(
@@ -54,12 +65,39 @@ export async function PATCH(
             : body.rotationStartDate
               ? new Date(body.rotationStartDate)
               : null,
-        rotationStartKind: body.rotationStartKind,
+        rotationStartKind:
+          body.rotationStartKind === undefined
+            ? undefined
+            : body.rotationStartKind === "NIGHT"
+              ? "NIGHT"
+              : "DAY",
         targetHours:
           body.targetHours === undefined ? undefined : (body.targetHours ?? null),
         hoursPeriod: body.hoursPeriod,
+        employmentType: body.employmentType,
+        dutyModel: body.dutyModel,
+        dutyOnDays: body.dutyOnDays,
+        dutyOffDays: body.dutyOffDays,
+        dutyCycleStartDate:
+          body.dutyCycleStartDate === undefined
+            ? undefined
+            : body.dutyCycleStartDate
+              ? new Date(body.dutyCycleStartDate)
+              : null,
+        allowFifthShiftPerMonth: body.allowFifthShiftPerMonth,
+        partTimeStartTime: body.partTimeStartTime,
+        partTimeEndTime: body.partTimeEndTime,
+        workWeekdays: body.workWeekdays,
+        allowIntermediateShifts: body.allowIntermediateShifts,
+        defaultShiftTemplateId:
+          body.defaultShiftTemplateId === undefined
+            ? undefined
+            : body.defaultShiftTemplateId || null,
       },
-      include: { competencies: { include: { competency: true } } },
+      include: {
+        competencies: { include: { competency: true } },
+        defaultShiftTemplate: true,
+      },
     });
     return NextResponse.json(employee);
   } catch (error) {

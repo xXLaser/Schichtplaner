@@ -2,14 +2,17 @@
 
 Web-App zum Erstellen von Dienstplänen mit:
 
+- **Ursprungsdienstplan** – manuelle Basis; die Generierung startet immer davon
+- **Dienstmodelle** – 4 Tage Dienst / 4 frei (Vollzeit), Mo–Fr 9–15 (Teilzeit), optional Zwischendienste
+- **Überstundenpauschale** – einmal im Monat bis zu 5 Dienste in einer Woche (Vollzeit)
+- **Ruhezeit 12 Stunden** – gesetzliche Pause zwischen Diensten (z. B. 11–23 → kein 6–18 am Folgetag)
 - **Mitarbeiter & Kompetenzen** – jeder Person mehrere Fähigkeiten zuweisen
 - **Schichtanforderungen** – einstellen, wie viele Personen je Kompetenz pro Schicht anwesend sein müssen
-- **Schichtpräferenzen** – nur Tag, nur Nacht oder Wechseldienst (z. B. 1 Woche Nacht/1 Woche Tag) je Mitarbeiter
-- **Sollstunden** – Zielstunden pro Monat oder Quartal; der Planer gleicht automatisch aus, wer noch Stunden braucht
-- **Nachträgliches Anpassen** – im Dienstplan Personen manuell hinzufügen/entfernen, auch nach der automatischen Generierung
-- **Urlaubsplaner** – Kalender, Resturlaub, Anträge genehmigen, Überschneidungswarnungen
-- **Krankenstand & Abwesenheiten** – erfassen und automatisch kompensieren
-- **Mobile Nutzung** – Bottom-Navigation, Tag-Ansicht, als App auf dem Homescreen speicherbar
+- **Schichtpräferenzen** – nur Tag, nur Nacht oder Wechseldienst je Mitarbeiter
+- **Sollstunden** – Zielstunden pro Monat oder Quartal
+- **Nachträgliches Anpassen** – Personen manuell hinzufügen/entfernen
+- **Urlaubsplaner** – Kalender, Resturlaub, Anträge genehmigen
+- **Mobile Nutzung** – Bottom-Navigation, Tag-Ansicht, Homescreen-App
 
 ## Windows-Server – Dauerbetrieb
 
@@ -60,11 +63,11 @@ Die Datenbank wird **nicht** bei jedem Start überschrieben. Seed läuft nur, we
 
 ## Ablauf
 
-1. Kompetenzen anlegen
-2. Mitarbeiter anlegen: Kompetenzen, Schichtpräferenz (Tag/Nacht/Wechseldienst) und optional Sollstunden pro Monat/Quartal hinterlegen
-3. Schichten anlegen und je Schicht als Tag oder Nacht kennzeichnen
-4. Dienstplan generieren – danach über „Nachträglich anpassen“ einzelne Personen ergänzen oder entfernen
-5. Unter „Stunden“ den Soll-/Ist-Vergleich je Mitarbeiter einsehen
+1. Kompetenzen und Schichten anlegen (inkl. Zwischendienste / Teilzeit 9–15)
+2. Mitarbeiter anlegen: **Dienstmodell** (4/4 oder Mo–Fr), Präferenz, Sollstunden
+3. Unter **Ursprungsplan** Basis manuell pflegen oder aus Modellen vorschlagen
+4. Dienstplan generieren – übernimmt den Ursprung, füllt Lücken, beachtet Abwesenheiten und **12 Std. Ruhezeit**
+5. Bei Bedarf nachträglich anpassen; unter „Stunden“ Soll/Ist prüfen
 
 ## Technik
 

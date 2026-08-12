@@ -12,7 +12,7 @@ const schema = z.object({
   color: z.string().optional(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
-  kind: z.enum(["DAY", "NIGHT"]).optional(),
+  kind: z.enum(["DAY", "NIGHT", "INTERMEDIATE"]).optional(),
   requirements: z
     .array(
       z.object({

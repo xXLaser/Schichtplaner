@@ -128,6 +128,9 @@ export default function DienstplanPage() {
       setWarnings(result.warnings ?? []);
       setMessage(
         `${result.created} Zuweisungen erstellt` +
+          (result.fromBase
+            ? ` (davon ${result.fromBase} aus Ursprungsplan)`
+            : "") +
           (result.warnings?.length
             ? ` · ${result.warnings.length} Kompetenzlücken`
             : " · alle Anforderungen erfüllt"),
@@ -179,7 +182,8 @@ export default function DienstplanPage() {
       if (
         err instanceof ApiError &&
         err.status === 409 &&
-        (err.body as { code?: string } | undefined)?.code === "ABSENT"
+        ((err.body as { code?: string } | undefined)?.code === "ABSENT" ||
+          (err.body as { code?: string } | undefined)?.code === "REST")
       ) {
         if (confirm(`${err.message}\n\nTrotzdem eintragen?`)) {
           await handleAdd(day, shiftId, true);
@@ -297,7 +301,7 @@ export default function DienstplanPage() {
     <div className="animate-fade-up">
       <PageHeader
         title="Dienstplan"
-        subtitle="Automatische Belegung nach Kompetenzen. Genehmigte Abwesenheiten werden kompensiert."
+        subtitle="Basiert auf dem Ursprungsdienstplan; Abwesenheiten, Dienstmodelle und 12-Stunden-Ruhezeit werden automatisch beachtet."
         actions={
           <>
             <Button

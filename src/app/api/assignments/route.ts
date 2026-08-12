@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { parseISO, startOfDay, isWithinInterval } from "date-fns";
 import { apiError } from "@/lib/api-error";
+import { checkRestConflict } from "@/lib/scheduler";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,8 @@ export async function POST(req: NextRequest) {
         where: {
           employeeId: body.employeeId,
           status: "APPROVED",
+          startDate: { lte: date },
+          endDate: { gte: date },
         },
       });
       if (
@@ -43,6 +46,18 @@ export async function POST(req: NextRequest) {
           { status: 409 },
         );
       }
+
+      const restError = await checkRestConflict({
+        employeeId: body.employeeId,
+        date: body.date,
+        shiftTemplateId: body.shiftTemplateId,
+      });
+      if (restError) {
+        return NextResponse.json(
+          { error: restError, code: "REST" },
+          { status: 409 },
+        );
+      }
     }
 
     const assignment = await prisma.assignment.create({
@@ -53,7 +68,9 @@ export async function POST(req: NextRequest) {
         competencyId: body.competencyId || null,
       },
       include: {
-        employee: { include: { competencies: { include: { competency: true } } } },
+        employee: {
+          include: { competencies: { include: { competency: true } } },
+        },
         shiftTemplate: true,
       },
     });
@@ -67,7 +84,10 @@ export async function POST(req: NextRequest) {
       (error as { code: string }).code === "P2002"
     ) {
       return NextResponse.json(
-        { error: "Diese Person ist für diese Schicht an diesem Tag bereits eingetragen." },
+        {
+          error:
+            "Diese Person ist für diese Schicht an diesem Tag bereits eingetragen.",
+        },
         { status: 409 },
       );
     }

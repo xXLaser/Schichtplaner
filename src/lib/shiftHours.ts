@@ -18,18 +18,21 @@ export function shiftDurationHours(startTime: string, endTime: string): number {
   return (endMinutes - startMinutes) / 60;
 }
 
-export type ShiftKind = "DAY" | "NIGHT";
+export type ShiftKind = "DAY" | "NIGHT" | "INTERMEDIATE";
 
 type RotationConfig = {
   shiftPreference: "ANY" | "DAY_ONLY" | "NIGHT_ONLY" | "ROTATING";
   rotationWeeks: number;
   rotationStartDate: Date | null;
   rotationStartKind: ShiftKind;
+  allowIntermediateShifts?: boolean;
 };
 
 /**
  * Liefert die an einem bestimmten Tag für den Mitarbeiter erlaubte Schichtart,
  * oder null, wenn keine Einschränkung besteht (Präferenz "ANY").
+ * Zwischendienste (INTERMEDIATE) werden separat über allowIntermediateShifts
+ * gesteuert und sind hier nicht die „erlaubte Art“.
  * Bei Wechseldienst (ROTATING) wird anhand von rotationStartDate/-Kind und
  * rotationWeeks berechnet, in welcher Phase (Tag/Nacht) sich der Mitarbeiter
  * an diesem Tag befindet.
@@ -42,7 +45,7 @@ export function allowedShiftKind(
   if (employee.shiftPreference === "NIGHT_ONLY") return "NIGHT";
   if (employee.shiftPreference === "ANY") return null;
 
-  // ROTATING
+  // ROTATING – Intermediate zählt nicht als Rotationsphase
   const weeks = Math.max(1, employee.rotationWeeks || 1);
   const reference = employee.rotationStartDate
     ? startOfDay(employee.rotationStartDate)
@@ -53,9 +56,23 @@ export function allowedShiftKind(
   );
   const periodIndex = Math.floor(daysSince / (weeks * 7));
   const isStartPhase = periodIndex % 2 === 0;
-  const startKind = employee.rotationStartKind ?? "DAY";
+  const startKind: ShiftKind =
+    employee.rotationStartKind === "NIGHT" ? "NIGHT" : "DAY";
   const otherKind: ShiftKind = startKind === "DAY" ? "NIGHT" : "DAY";
   return isStartPhase ? startKind : otherKind;
+}
+
+/** Ob Präferenz/Rotation die Schichtart zulässt (inkl. Intermediate-Flag). */
+export function preferenceAllowsShift(
+  employee: RotationConfig,
+  day: Date,
+  shiftKind: ShiftKind,
+): boolean {
+  if (shiftKind === "INTERMEDIATE") {
+    return Boolean(employee.allowIntermediateShifts);
+  }
+  const allowed = allowedShiftKind(employee, day);
+  return allowed === null || allowed === shiftKind;
 }
 
 export function periodKeyFor(day: Date, period: "MONTH" | "QUARTER"): string {

@@ -19,13 +19,13 @@ model Competency {
 }
 
 model Employee {
-  id                  String          @id @default(cuid())
+  id                  String   @id @default(cuid())
   name                String
   email               String?
-  active              Boolean         @default(true)
-  maxShifts           Int             @default(5)
-  vacationDaysPerYear Int             @default(30)
-  createdAt           DateTime        @default(now())
+  active              Boolean  @default(true)
+  maxShifts           Int      @default(5)
+  vacationDaysPerYear Int      @default(30)
+  createdAt           DateTime @default(now())
 
   // Schichtpräferenz: fest Tag, fest Nacht, wechselnd (Rotation) oder egal
   shiftPreference   ShiftPreference @default(ANY)
@@ -37,9 +37,38 @@ model Employee {
   targetHours Float?
   hoursPeriod HoursPeriod @default(MONTH)
 
-  competencies EmployeeCompetency[]
-  absences     Absence[]
-  assignments  Assignment[]
+  // Beschäftigungsart & Dienstmodell (Basis für Planerstellung)
+  employmentType          EmploymentType @default(FULL_TIME)
+  dutyModel               DutyModel      @default(ROTATION_4_4)
+  dutyOnDays              Int            @default(4)
+  dutyOffDays             Int            @default(4)
+  dutyCycleStartDate      DateTime?
+  // Überstundenpauschale: einmal im Monat bis zu 5 Dienste in einer Woche
+  allowFifthShiftPerMonth Boolean        @default(true)
+  // Teilzeit Mo–Fr (Standard 09:00–15:00), Wochentage als "1,2,3,4,5" (1=Mo … 7=So)
+  partTimeStartTime       String         @default("09:00")
+  partTimeEndTime         String         @default("15:00")
+  workWeekdays            String         @default("1,2,3,4,5")
+  // Zwischendienste (z. B. 11–23) erlaubt
+  allowIntermediateShifts Boolean        @default(false)
+  defaultShiftTemplateId  String?
+
+  competencies         EmployeeCompetency[]
+  absences             Absence[]
+  assignments          Assignment[]
+  baseScheduleEntries  BaseScheduleEntry[]
+  defaultShiftTemplate ShiftTemplate?       @relation("EmployeeDefaultShift", fields: [defaultShiftTemplateId], references: [id], onDelete: SetNull)
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+}
+
+enum DutyModel {
+  ROTATION_4_4
+  WEEKDAYS
+  CUSTOM
 }
 
 enum ShiftPreference {
@@ -99,13 +128,16 @@ model ShiftTemplate {
   kind      ShiftKind @default(DAY)
   createdAt DateTime  @default(now())
 
-  requirements ShiftRequirement[]
-  assignments  Assignment[]
+  requirements        ShiftRequirement[]
+  assignments         Assignment[]
+  baseScheduleEntries BaseScheduleEntry[]
+  defaultForEmployees Employee[]          @relation("EmployeeDefaultShift")
 }
 
 enum ShiftKind {
   DAY
   NIGHT
+  INTERMEDIATE
 }
 
 model ShiftRequirement {
@@ -126,6 +158,22 @@ model Assignment {
   shiftTemplateId String
   employeeId      String
   competencyId    String?
+  createdAt       DateTime @default(now())
+
+  shiftTemplate ShiftTemplate @relation(fields: [shiftTemplateId], references: [id], onDelete: Cascade)
+  employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([date, shiftTemplateId, employeeId])
+  @@index([date])
+}
+
+/// Manuell gepflegter Ursprungsdienstplan – Basis für die Planerstellung.
+model BaseScheduleEntry {
+  id              String   @id @default(cuid())
+  date            DateTime
+  shiftTemplateId String
+  employeeId      String
+  note            String?
   createdAt       DateTime @default(now())
 
   shiftTemplate ShiftTemplate @relation(fields: [shiftTemplateId], references: [id], onDelete: Cascade)

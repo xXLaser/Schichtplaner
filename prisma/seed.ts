@@ -31,11 +31,12 @@ async function main() {
   }
 
   await prisma.assignment.deleteMany();
+  await prisma.baseScheduleEntry.deleteMany();
   await prisma.absence.deleteMany();
   await prisma.shiftRequirement.deleteMany();
   await prisma.employeeCompetency.deleteMany();
-  await prisma.shiftTemplate.deleteMany();
   await prisma.employee.deleteMany();
+  await prisma.shiftTemplate.deleteMany();
   await prisma.competency.deleteMany();
 
   const comps = await Promise.all([
@@ -61,13 +62,25 @@ async function main() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  const offset = (days: number) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() - days);
+    return d;
+  };
+
   const employees = await Promise.all([
-    // Nur Tagschicht
+    // Vollzeit 4/4, nur Tag
     prisma.employee.create({
       data: {
         name: "Anna Berger",
         email: "anna.berger@beispiel.de",
-        maxShifts: 10,
+        maxShifts: 5,
+        employmentType: "FULL_TIME",
+        dutyModel: "ROTATION_4_4",
+        dutyOnDays: 4,
+        dutyOffDays: 4,
+        dutyCycleStartDate: offset(0),
+        allowFifthShiftPerMonth: true,
         shiftPreference: "DAY_ONLY",
         targetHours: 160,
         hoursPeriod: "MONTH",
@@ -80,12 +93,19 @@ async function main() {
         },
       },
     }),
-    // Wechseldienst: 1 Woche Nacht, 1 Woche Tag
+    // Vollzeit 4/4 + Wechsel Tag/Nacht
     prisma.employee.create({
       data: {
         name: "Markus Hofmann",
         email: "markus.hofmann@beispiel.de",
-        maxShifts: 12,
+        maxShifts: 5,
+        employmentType: "FULL_TIME",
+        dutyModel: "ROTATION_4_4",
+        dutyOnDays: 4,
+        dutyOffDays: 4,
+        dutyCycleStartDate: offset(2),
+        allowFifthShiftPerMonth: true,
+        allowIntermediateShifts: true,
         shiftPreference: "ROTATING",
         rotationWeeks: 1,
         rotationStartDate: today,
@@ -104,7 +124,13 @@ async function main() {
       data: {
         name: "Sara Klein",
         email: "sara.klein@beispiel.de",
-        maxShifts: 10,
+        maxShifts: 5,
+        employmentType: "FULL_TIME",
+        dutyModel: "ROTATION_4_4",
+        dutyOnDays: 4,
+        dutyOffDays: 4,
+        dutyCycleStartDate: offset(4),
+        allowFifthShiftPerMonth: true,
         shiftPreference: "DAY_ONLY",
         targetHours: 480,
         hoursPeriod: "QUARTER",
@@ -117,12 +143,17 @@ async function main() {
         },
       },
     }),
-    // Nur Nachtschicht
     prisma.employee.create({
       data: {
         name: "Tom Weber",
         email: "tom.weber@beispiel.de",
-        maxShifts: 12,
+        maxShifts: 5,
+        employmentType: "FULL_TIME",
+        dutyModel: "ROTATION_4_4",
+        dutyOnDays: 4,
+        dutyOffDays: 4,
+        dutyCycleStartDate: offset(1),
+        allowFifthShiftPerMonth: true,
         shiftPreference: "NIGHT_ONLY",
         targetHours: 160,
         hoursPeriod: "MONTH",
@@ -134,13 +165,21 @@ async function main() {
         },
       },
     }),
+    // Teilzeit Mo–Fr 9–15
     prisma.employee.create({
       data: {
         name: "Lea Fischer",
         email: "lea.fischer@beispiel.de",
-        maxShifts: 10,
+        maxShifts: 5,
+        employmentType: "PART_TIME",
+        dutyModel: "WEEKDAYS",
+        partTimeStartTime: "09:00",
+        partTimeEndTime: "15:00",
+        workWeekdays: "1,2,3,4,5",
+        allowFifthShiftPerMonth: false,
+        allowIntermediateShifts: false,
         shiftPreference: "DAY_ONLY",
-        targetHours: 130,
+        targetHours: 120,
         hoursPeriod: "MONTH",
         competencies: {
           create: [
@@ -151,12 +190,17 @@ async function main() {
         },
       },
     }),
-    // Wechseldienst: 2 Wochen Tag, 2 Wochen Nacht
     prisma.employee.create({
       data: {
         name: "Jonas Richter",
         email: "jonas.richter@beispiel.de",
-        maxShifts: 12,
+        maxShifts: 5,
+        employmentType: "FULL_TIME",
+        dutyModel: "ROTATION_4_4",
+        dutyOnDays: 4,
+        dutyOffDays: 4,
+        dutyCycleStartDate: offset(3),
+        allowFifthShiftPerMonth: true,
         shiftPreference: "ROTATING",
         rotationWeeks: 2,
         rotationStartDate: today,
@@ -175,7 +219,14 @@ async function main() {
       data: {
         name: "Nina Schulz",
         email: "nina.schulz@beispiel.de",
-        maxShifts: 10,
+        maxShifts: 5,
+        employmentType: "FULL_TIME",
+        dutyModel: "ROTATION_4_4",
+        dutyOnDays: 4,
+        dutyOffDays: 4,
+        dutyCycleStartDate: offset(5),
+        allowFifthShiftPerMonth: true,
+        allowIntermediateShifts: true,
         shiftPreference: "NIGHT_ONLY",
         targetHours: 160,
         hoursPeriod: "MONTH",
@@ -191,7 +242,14 @@ async function main() {
       data: {
         name: "Paul Wagner",
         email: "paul.wagner@beispiel.de",
-        maxShifts: 12,
+        maxShifts: 5,
+        employmentType: "FULL_TIME",
+        dutyModel: "ROTATION_4_4",
+        dutyOnDays: 4,
+        dutyOffDays: 4,
+        dutyCycleStartDate: offset(6),
+        allowFifthShiftPerMonth: true,
+        allowIntermediateShifts: true,
         shiftPreference: "ANY",
         targetHours: 160,
         hoursPeriod: "MONTH",
@@ -208,10 +266,16 @@ async function main() {
       data: {
         name: "Elena Vogt",
         email: "elena.vogt@beispiel.de",
-        maxShifts: 10,
+        maxShifts: 5,
+        employmentType: "PART_TIME",
+        dutyModel: "WEEKDAYS",
+        partTimeStartTime: "09:00",
+        partTimeEndTime: "15:00",
+        workWeekdays: "1,2,3,4,5",
+        allowIntermediateShifts: true,
         shiftPreference: "DAY_ONLY",
-        targetHours: 480,
-        hoursPeriod: "QUARTER",
+        targetHours: 100,
+        hoursPeriod: "MONTH",
         competencies: {
           create: [
             { competencyId: leitung.id },
@@ -225,7 +289,13 @@ async function main() {
       data: {
         name: "Felix Braun",
         email: "felix.braun@beispiel.de",
-        maxShifts: 12,
+        maxShifts: 5,
+        employmentType: "FULL_TIME",
+        dutyModel: "ROTATION_4_4",
+        dutyOnDays: 4,
+        dutyOffDays: 4,
+        dutyCycleStartDate: offset(7),
+        allowFifthShiftPerMonth: true,
         shiftPreference: "NIGHT_ONLY",
         targetHours: 160,
         hoursPeriod: "MONTH",
@@ -299,6 +369,50 @@ async function main() {
     },
   });
 
+  const teilzeit = await prisma.shiftTemplate.create({
+    data: {
+      name: "Teilzeit Mo–Fr",
+      startTime: "09:00",
+      endTime: "15:00",
+      color: "#0ea5e9",
+      sortOrder: 4,
+      kind: "DAY",
+      requirements: {
+        create: [
+          { competencyId: qs.id, minCount: 1 },
+          { competencyId: logistik.id, minCount: 1 },
+        ],
+      },
+    },
+  });
+
+  const zwischen = await prisma.shiftTemplate.create({
+    data: {
+      name: "Zwischendienst",
+      startTime: "11:00",
+      endTime: "23:00",
+      color: "#7c3aed",
+      sortOrder: 5,
+      kind: "INTERMEDIATE",
+      requirements: {
+        create: [
+          { competencyId: maschine.id, minCount: 1 },
+          { competencyId: logistik.id, minCount: 1 },
+        ],
+      },
+    },
+  });
+
+  // Teilzeit-Mitarbeiter an Teilzeitschicht koppeln
+  await prisma.employee.update({
+    where: { id: employees[4].id },
+    data: { defaultShiftTemplateId: teilzeit.id },
+  });
+  await prisma.employee.update({
+    where: { id: employees[8].id },
+    data: { defaultShiftTemplateId: teilzeit.id },
+  });
+
   // Sample absences next week
   const nextMonday = new Date(today);
   nextMonday.setDate(today.getDate() + ((1 + 7 - today.getDay()) % 7 || 7));
@@ -340,7 +454,7 @@ async function main() {
   console.log("Seed OK:", {
     competencies: comps.length,
     employees: employees.length,
-    shifts: [frueh.name, spaet.name, nacht.name],
+    shifts: [frueh.name, spaet.name, nacht.name, teilzeit.name, zwischen.name],
   });
 }
 

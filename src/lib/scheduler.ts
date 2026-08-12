@@ -5,15 +5,29 @@ import {
   isWithinInterval,
   parseISO,
   startOfDay,
+  subDays,
 } from "date-fns";
 import { prisma } from "./prisma";
 import {
-  allowedShiftKind,
   periodBounds,
   periodKeyFor,
+  preferenceAllowsShift,
   shiftDurationHours,
   type ShiftKind,
 } from "./shiftHours";
+import {
+  canTakeAnotherShiftThisWeek,
+  isDutyDay,
+  markFifthShiftWeek,
+  MIN_REST_HOURS,
+  respectsMinRest,
+  shiftDateTimeWindow,
+  shiftMatchesDutyModel,
+  weekKey,
+  type DutyModel,
+  type DutyModelConfig,
+  type EmploymentType,
+} from "./dutyModel";
 
 export type ScheduleWarning = {
   date: string;
@@ -27,13 +41,13 @@ export type ScheduleWarning = {
 
 export type GenerateResult = {
   created: number;
+  fromBase: number;
   warnings: ScheduleWarning[];
 };
 
-type EmployeeWithSkills = {
+type EmployeeWithSkills = DutyModelConfig & {
   id: string;
   name: string;
-  maxShifts: number;
   competencyIds: Set<string>;
   shiftPreference: "ANY" | "DAY_ONLY" | "NIGHT_ONLY" | "ROTATING";
   rotationWeeks: number;
@@ -63,15 +77,38 @@ function isAbsentOnDay(
   );
 }
 
-/**
- * Lädt und cached für jeden Mitarbeiter die bereits geleisteten Stunden in
- * seiner aktuellen Abrechnungsperiode (Monat oder Quartal), damit die
- * Zuteilung neuer Schichten die Sollstunden ausgleichen kann.
- */
+function toDutyConfig(e: {
+  employmentType: EmploymentType;
+  dutyModel: DutyModel;
+  dutyOnDays: number;
+  dutyOffDays: number;
+  dutyCycleStartDate: Date | null;
+  allowFifthShiftPerMonth: boolean;
+  partTimeStartTime: string;
+  partTimeEndTime: string;
+  workWeekdays: string;
+  allowIntermediateShifts: boolean;
+  defaultShiftTemplateId: string | null;
+  maxShifts: number;
+}): DutyModelConfig {
+  return {
+    employmentType: e.employmentType,
+    dutyModel: e.dutyModel,
+    dutyOnDays: e.dutyOnDays,
+    dutyOffDays: e.dutyOffDays,
+    dutyCycleStartDate: e.dutyCycleStartDate,
+    allowFifthShiftPerMonth: e.allowFifthShiftPerMonth,
+    partTimeStartTime: e.partTimeStartTime,
+    partTimeEndTime: e.partTimeEndTime,
+    workWeekdays: e.workWeekdays,
+    allowIntermediateShifts: e.allowIntermediateShifts,
+    defaultShiftTemplateId: e.defaultShiftTemplateId,
+    maxShifts: e.maxShifts,
+  };
+}
+
 class HoursTracker {
   private cache = new Map<string, number>();
-
-  constructor(private pool: EmployeeWithSkills[]) {}
 
   private cacheKey(employeeId: string, periodKey: string): string {
     return `${employeeId}|${periodKey}`;
@@ -92,7 +129,8 @@ class HoursTracker {
     });
     const hours = assignments.reduce(
       (sum, a) =>
-        sum + shiftDurationHours(a.shiftTemplate.startTime, a.shiftTemplate.endTime),
+        sum +
+        shiftDurationHours(a.shiftTemplate.startTime, a.shiftTemplate.endTime),
       0,
     );
     this.cache.set(key, hours);
@@ -105,7 +143,6 @@ class HoursTracker {
     this.cache.set(key, (this.cache.get(key) ?? 0) + hours);
   }
 
-  /** Nur für bereits vorab geladene (siehe hoursSoFar) Werte gedacht. */
   getCached(employee: EmployeeWithSkills, day: Date): number {
     const periodKey = periodKeyFor(day, employee.hoursPeriod);
     return this.cache.get(this.cacheKey(employee.id, periodKey)) ?? 0;
@@ -114,11 +151,14 @@ class HoursTracker {
 
 /**
  * Erstellt einen Dienstplan für den Zeitraum.
- * Berücksichtigt Abwesenheiten (Urlaub/Krankenstand), Schichtpräferenzen
- * (nur Tag / nur Nacht / Wechseldienst) und gleicht die Zuteilung so aus,
- * dass jeder möglichst nah an seine Soll-Stunden (Monat/Quartal) kommt.
- * Bei Neugenerierung werden bestehende Zuweisungen im Zeitraum ersetzt
- * (automatische Kompensation von Abwesenheiten).
+ *
+ * Ablauf:
+ * 1. Bestehende Zuweisungen im Zeitraum optional löschen
+ * 2. Ursprungsdienstplan als Basis übernehmen (sofern Dienstmodell, Abwesenheit
+ *    und gesetzliche Ruhezeit von 12 Stunden passen)
+ * 3. Fehlende Kompetenz-Slots automatisch auffüllen unter Beachtung von
+ *    Dienstmodell (4/4 bzw. Mo–Fr), Überstundenpauschale (5. Dienst/Woche
+ *    einmal im Monat) und Mindestruhezeit
  */
 export async function generateSchedule(
   startDate: string,
@@ -130,29 +170,46 @@ export async function generateSchedule(
   const end = startOfDay(parseISO(endDate));
   const days = eachDayOfInterval({ start, end });
 
-  const [employees, absences, shifts] = await Promise.all([
-    prisma.employee.findMany({
-      where: { active: true },
-      include: { competencies: true },
-    }),
-    prisma.absence.findMany({
-      where: {
-        status: "APPROVED",
-        startDate: { lte: end },
-        endDate: { gte: start },
-      },
-    }),
-    prisma.shiftTemplate.findMany({
-      where: { active: true },
-      include: { requirements: { include: { competency: true } } },
-      orderBy: { sortOrder: "asc" },
-    }),
-  ]);
+  const [employees, absences, shifts, baseEntries, priorAssignments] =
+    await Promise.all([
+      prisma.employee.findMany({
+        where: { active: true },
+        include: { competencies: true },
+      }),
+      prisma.absence.findMany({
+        where: {
+          status: "APPROVED",
+          startDate: { lte: end },
+          endDate: { gte: start },
+        },
+      }),
+      prisma.shiftTemplate.findMany({
+        where: { active: true },
+        include: { requirements: { include: { competency: true } } },
+        orderBy: { sortOrder: "asc" },
+      }),
+      prisma.baseScheduleEntry.findMany({
+        where: {
+          date: { gte: start, lte: addDays(end, 1) },
+        },
+        include: { shiftTemplate: true },
+      }),
+      // Vorherige Dienste (für Ruhezeit über die Periodengrenze hinweg)
+      prisma.assignment.findMany({
+        where: {
+          date: {
+            gte: subDays(start, 2),
+            lt: start,
+          },
+        },
+        include: { shiftTemplate: true },
+      }),
+    ]);
 
   const pool: EmployeeWithSkills[] = employees.map((e) => ({
     id: e.id,
     name: e.name,
-    maxShifts: e.maxShifts,
+    ...toDutyConfig(e),
     competencyIds: new Set(e.competencies.map((c) => c.competencyId)),
     shiftPreference: e.shiftPreference,
     rotationWeeks: e.rotationWeeks,
@@ -161,6 +218,9 @@ export async function generateSchedule(
     targetHours: e.targetHours,
     hoursPeriod: e.hoursPeriod,
   }));
+
+  const poolById = new Map(pool.map((e) => [e.id, e]));
+  const shiftById = new Map(shifts.map((s) => [s.id, s]));
 
   if (replaceExisting) {
     await prisma.assignment.deleteMany({
@@ -174,10 +234,48 @@ export async function generateSchedule(
   }
 
   const assignmentCount = new Map<string, number>();
+  const weekCounts = new Map<string, number>(); // empId|weekKey → count
+  const fifthWeeks = new Set<string>();
+  /** Letztes Schichtende je Mitarbeiter (für 12h-Ruhezeit). */
+  const lastEnd = new Map<string, Date>();
+
   for (const e of pool) assignmentCount.set(e.id, 0);
 
-  const hoursTracker = new HoursTracker(pool);
-  // Vorab laden, damit die erste Sortierung schon die Stundenbilanz kennt.
+  // Vorperioden-Zuweisungen für Ruhezeit initialisieren
+  for (const a of priorAssignments) {
+    const { end: endAt } = shiftDateTimeWindow(
+      a.date,
+      a.shiftTemplate.startTime,
+      a.shiftTemplate.endTime,
+    );
+    const prev = lastEnd.get(a.employeeId);
+    if (!prev || endAt > prev) lastEnd.set(a.employeeId, endAt);
+  }
+
+  // Bestehende Wochenzähler im Monat (außerhalb des Fensters) für 5er-Limit
+  const monthStart = new Date(start.getFullYear(), start.getMonth(), 1);
+  const existingMonth = await prisma.assignment.findMany({
+    where: {
+      date: { gte: monthStart, lt: start },
+    },
+  });
+  const monthWeekCounts = new Map<string, number>();
+  for (const a of existingMonth) {
+    const k = `${a.employeeId}|${weekKey(a.date)}`;
+    monthWeekCounts.set(k, (monthWeekCounts.get(k) ?? 0) + 1);
+  }
+  for (const [k, count] of monthWeekCounts) {
+    if (count >= 5) {
+      const empId = k.split("|")[0];
+      const wk = k.slice(empId.length + 1);
+      const d = existingMonth.find(
+        (a) => a.employeeId === empId && weekKey(a.date) === wk,
+      )?.date;
+      if (d) markFifthShiftWeek(d, 5, fifthWeeks);
+    }
+  }
+
+  const hoursTracker = new HoursTracker();
   for (const day of days) {
     for (const e of pool) {
       await hoursTracker.hoursSoFar(e, day);
@@ -192,43 +290,147 @@ export async function generateSchedule(
   }[] = [];
 
   const warnings: ScheduleWarning[] = [];
+  let fromBase = 0;
 
-  /** 0..1: wie stark die Quote (Stunden- oder Schichtziel) bereits ausgefüllt ist. */
+  function weekCountKey(empId: string, day: Date) {
+    return `${empId}|${weekKey(day)}`;
+  }
+
+  function getWeekCount(empId: string, day: Date) {
+    return weekCounts.get(weekCountKey(empId, day)) ?? 0;
+  }
+
+  function recordAssignment(
+    emp: EmployeeWithSkills,
+    day: Date,
+    shift: { id: string; startTime: string; endTime: string },
+    competencyId: string | null,
+  ) {
+    const { start: startAt, end: endAt } = shiftDateTimeWindow(
+      day,
+      shift.startTime,
+      shift.endTime,
+    );
+    toCreate.push({
+      date: day,
+      shiftTemplateId: shift.id,
+      employeeId: emp.id,
+      competencyId,
+    });
+    assignmentCount.set(emp.id, (assignmentCount.get(emp.id) ?? 0) + 1);
+    const wk = weekCountKey(emp.id, day);
+    const next = (weekCounts.get(wk) ?? 0) + 1;
+    weekCounts.set(wk, next);
+    markFifthShiftWeek(day, next, fifthWeeks);
+    lastEnd.set(emp.id, endAt);
+    hoursTracker.addHours(
+      emp,
+      day,
+      shiftDurationHours(shift.startTime, shift.endTime),
+    );
+    void startAt;
+  }
+
+  function canAssign(
+    emp: EmployeeWithSkills,
+    day: Date,
+    shift: {
+      id: string;
+      startTime: string;
+      endTime: string;
+      kind: ShiftKind;
+    },
+  ): boolean {
+    if (!isDutyDay(emp, day)) return false;
+    if (isAbsentOnDay(absences, emp.id, day)) return false;
+    if (!shiftMatchesDutyModel(emp, shift)) return false;
+    if (!preferenceAllowsShift(emp, day, shift.kind)) return false;
+
+    const { start: startAt } = shiftDateTimeWindow(
+      day,
+      shift.startTime,
+      shift.endTime,
+    );
+    if (!respectsMinRest(lastEnd.get(emp.id), startAt, MIN_REST_HOURS)) {
+      return false;
+    }
+
+    if (
+      !canTakeAnotherShiftThisWeek(
+        emp,
+        day,
+        getWeekCount(emp.id, day),
+        fifthWeeks,
+      )
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
   function fractionFilled(e: EmployeeWithSkills, day: Date): number {
     if (e.targetHours && e.targetHours > 0) {
-      // hoursSoFar wurde bereits vorab in den Cache geladen (siehe oben).
       return hoursTracker.getCached(e, day) / e.targetHours;
     }
     return (assignmentCount.get(e.id) ?? 0) / Math.max(1, e.maxShifts);
   }
 
+  // —— 1) Ursprungsdienstplan als Basis ——
+  const busyByDay = new Map<string, Set<string>>();
+  const assignedShiftByDay = new Map<string, Set<string>>();
+
+  function busySet(day: Date) {
+    const k = dayKey(day);
+    if (!busyByDay.has(k)) busyByDay.set(k, new Set());
+    return busyByDay.get(k)!;
+  }
+  function assignedSet(day: Date, shiftId: string) {
+    const k = `${dayKey(day)}|${shiftId}`;
+    if (!assignedShiftByDay.has(k)) assignedShiftByDay.set(k, new Set());
+    return assignedShiftByDay.get(k)!;
+  }
+
+  const sortedBase = [...baseEntries].sort(
+    (a, b) => a.date.getTime() - b.date.getTime(),
+  );
+
+  for (const entry of sortedBase) {
+    const day = startOfDay(entry.date);
+    if (day < start || day > end) continue;
+    const emp = poolById.get(entry.employeeId);
+    const shift = shiftById.get(entry.shiftTemplateId);
+    if (!emp || !shift) continue;
+    if (busySet(day).has(emp.id)) continue;
+    if (!canAssign(emp, day, shift)) continue;
+
+    const competencyId =
+      [...emp.competencyIds].find((cid) =>
+        shift.requirements.some((r) => r.competencyId === cid),
+      ) ?? null;
+
+    recordAssignment(emp, day, shift, competencyId);
+    busySet(day).add(emp.id);
+    assignedSet(day, shift.id).add(emp.id);
+    fromBase += 1;
+  }
+
+  // —— 2) Fehlende Slots auffüllen ——
   for (const day of days) {
-    // Track who already works any shift this day (max 1 shift/day)
-    const busyToday = new Set<string>();
+    const busyToday = busySet(day);
 
     for (const shift of shifts) {
-      const assignedThisShift = new Set<string>();
+      const assignedThisShift = assignedSet(day, shift.id);
 
-      const matchesPreference = (e: EmployeeWithSkills) => {
-        const allowed = allowedShiftKind(e, day);
-        return allowed === null || allowed === shift.kind;
-      };
+      const matchesAll = (e: EmployeeWithSkills) =>
+        canAssign(e, day, shift) && !busyToday.has(e.id);
 
-      // Sort requirements by scarcity (fewest qualified available first)
       const reqs = [...shift.requirements].sort((a, b) => {
         const availA = pool.filter(
-          (e) =>
-            e.competencyIds.has(a.competencyId) &&
-            !busyToday.has(e.id) &&
-            matchesPreference(e) &&
-            !isAbsentOnDay(absences, e.id, day),
+          (e) => e.competencyIds.has(a.competencyId) && matchesAll(e),
         ).length;
         const availB = pool.filter(
-          (e) =>
-            e.competencyIds.has(b.competencyId) &&
-            !busyToday.has(e.id) &&
-            matchesPreference(e) &&
-            !isAbsentOnDay(absences, e.id, day),
+          (e) => e.competencyIds.has(b.competencyId) && matchesAll(e),
         ).length;
         return availA - availB;
       });
@@ -236,30 +438,21 @@ export async function generateSchedule(
       for (const req of reqs) {
         let filled = 0;
 
-        // Prefer people already on this shift who also have the competency
-        // (one person can cover multiple competency slots if they have them)
         for (const empId of assignedThisShift) {
           if (filled >= req.minCount) break;
-          const emp = pool.find((e) => e.id === empId);
-          if (emp?.competencyIds.has(req.competencyId)) {
-            filled += 1;
-          }
+          const emp = poolById.get(empId);
+          if (emp?.competencyIds.has(req.competencyId)) filled += 1;
         }
 
         while (filled < req.minCount) {
-          // Praeferenz/Rotation ist eine harte Bedingung (nicht verhandelbar).
           const baseFilter = (e: EmployeeWithSkills) =>
             e.competencyIds.has(req.competencyId) &&
             !busyToday.has(e.id) &&
             !assignedThisShift.has(e.id) &&
-            matchesPreference(e) &&
-            !isAbsentOnDay(absences, e.id, day);
+            canAssign(e, day, shift);
 
           let candidates = pool
-            .filter(
-              (e) =>
-                baseFilter(e) && (assignmentCount.get(e.id) ?? 0) < e.maxShifts,
-            )
+            .filter(baseFilter)
             .sort((a, b) => {
               const fa = fractionFilled(a, day);
               const fb = fractionFilled(b, day);
@@ -267,31 +460,12 @@ export async function generateSchedule(
               return a.competencyIds.size - b.competencyIds.size;
             });
 
-          if (candidates.length === 0) {
-            // Niemand mehr unter dem weichen Schicht-Limit -> Limit lockern,
-            // damit die Schicht nicht unbesetzt bleibt.
-            candidates = pool
-              .filter(baseFilter)
-              .sort((a, b) => fractionFilled(a, day) - fractionFilled(b, day));
-          }
-
           if (candidates.length === 0) break;
 
           const pick = candidates[0];
           assignedThisShift.add(pick.id);
           busyToday.add(pick.id);
-          assignmentCount.set(pick.id, (assignmentCount.get(pick.id) ?? 0) + 1);
-          hoursTracker.addHours(
-            pick,
-            day,
-            shiftDurationHours(shift.startTime, shift.endTime),
-          );
-          toCreate.push({
-            date: day,
-            shiftTemplateId: shift.id,
-            employeeId: pick.id,
-            competencyId: req.competencyId,
-          });
+          recordAssignment(pick, day, shift, req.competencyId);
           filled += 1;
         }
 
@@ -314,21 +488,23 @@ export async function generateSchedule(
     await prisma.assignment.createMany({ data: toCreate });
   }
 
-  return { created: toCreate.length, warnings };
+  return { created: toCreate.length, fromBase, warnings };
 }
 
 export async function getSchedule(startDate: string, endDate: string) {
   const start = startOfDay(parseISO(startDate));
   const end = startOfDay(parseISO(endDate));
 
-  const [assignments, absences, shifts, employees, competencies] =
+  const [assignments, absences, shifts, employees, competencies, baseEntries] =
     await Promise.all([
       prisma.assignment.findMany({
         where: {
           date: { gte: start, lte: addDays(end, 1) },
         },
         include: {
-          employee: { include: { competencies: { include: { competency: true } } } },
+          employee: {
+            include: { competencies: { include: { competency: true } } },
+          },
           shiftTemplate: true,
         },
         orderBy: [{ date: "asc" }],
@@ -352,6 +528,15 @@ export async function getSchedule(startDate: string, endDate: string) {
         orderBy: { name: "asc" },
       }),
       prisma.competency.findMany({ orderBy: { name: "asc" } }),
+      prisma.baseScheduleEntry.findMany({
+        where: {
+          date: { gte: start, lte: addDays(end, 1) },
+        },
+        include: {
+          employee: true,
+          shiftTemplate: true,
+        },
+      }),
     ]);
 
   return {
@@ -364,9 +549,73 @@ export async function getSchedule(startDate: string, endDate: string) {
       startDate: dayKey(a.startDate),
       endDate: dayKey(a.endDate),
     })),
+    baseEntries: baseEntries.map((b) => ({
+      ...b,
+      date: dayKey(b.date),
+    })),
     shifts,
     employees,
     competencies,
     days: eachDayOfInterval({ start, end }).map(dayKey),
+    minRestHours: MIN_REST_HOURS,
   };
+}
+
+/**
+ * Prüft, ob eine manuelle Zuweisung die Mindestruhezeit verletzt.
+ * Gibt eine menschenlesbare Meldung zurück oder null wenn ok.
+ */
+export async function checkRestConflict(params: {
+  employeeId: string;
+  date: string;
+  shiftTemplateId: string;
+  excludeAssignmentId?: string;
+}): Promise<string | null> {
+  const day = startOfDay(parseISO(params.date));
+  const shift = await prisma.shiftTemplate.findUnique({
+    where: { id: params.shiftTemplateId },
+  });
+  if (!shift) return "Schichtvorlage nicht gefunden.";
+
+  const { start: nextStart, end: nextEnd } = shiftDateTimeWindow(
+    day,
+    shift.startTime,
+    shift.endTime,
+  );
+
+  const nearby = await prisma.assignment.findMany({
+    where: {
+      employeeId: params.employeeId,
+      date: {
+        gte: subDays(day, 2),
+        lte: addDays(day, 2),
+      },
+      ...(params.excludeAssignmentId
+        ? { id: { not: params.excludeAssignmentId } }
+        : {}),
+    },
+    include: { shiftTemplate: true },
+  });
+
+  for (const a of nearby) {
+    const win = shiftDateTimeWindow(
+      a.date,
+      a.shiftTemplate.startTime,
+      a.shiftTemplate.endTime,
+    );
+    // Bestehende Schicht vor der neuen
+    if (win.end <= nextStart) {
+      if (!respectsMinRest(win.end, nextStart, MIN_REST_HOURS)) {
+        return `Gesetzliche Ruhezeit unterschritten: nach Ende ${format(win.end, "dd.MM. HH:mm")} mindestens ${MIN_REST_HOURS} Stunden Pause nötig (Schichtbeginn ${format(nextStart, "dd.MM. HH:mm")}).`;
+      }
+    }
+    // Neue Schicht vor der bestehenden
+    if (nextEnd <= win.start) {
+      if (!respectsMinRest(nextEnd, win.start, MIN_REST_HOURS)) {
+        return `Gesetzliche Ruhezeit unterschritten: vor Beginn ${format(win.start, "dd.MM. HH:mm")} mindestens ${MIN_REST_HOURS} Stunden Pause nötig (Schichtende wäre ${format(nextEnd, "dd.MM. HH:mm")}).`;
+      }
+    }
+  }
+
+  return null;
 }

@@ -6,12 +6,13 @@ import { useEffect, useState } from "react";
 
 const primaryLinks = [
   { href: "/dienstplan", label: "Plan", full: "Dienstplan", icon: "▦" },
+  { href: "/ursprung", label: "Basis", full: "Ursprungsplan", icon: "▣" },
   { href: "/urlaub", label: "Urlaub", full: "Urlaubsplaner", icon: "☀" },
-  { href: "/abwesenheiten", label: "Krank", full: "Abwesenheiten", icon: "+" },
   { href: "/mitarbeiter", label: "Team", full: "Mitarbeiter", icon: "◎" },
 ];
 
 const moreLinks = [
+  { href: "/abwesenheiten", label: "Abwesenheiten" },
   { href: "/kompetenzen", label: "Kompetenzen" },
   { href: "/schichten", label: "Schichten" },
   { href: "/stunden", label: "Stunden" },
@@ -29,6 +30,7 @@ export function Nav() {
 
   const allDesktop = [
     { href: "/dienstplan", label: "Dienstplan" },
+    { href: "/ursprung", label: "Ursprungsplan" },
     { href: "/urlaub", label: "Urlaubsplaner" },
     { href: "/mitarbeiter", label: "Mitarbeiter" },
     { href: "/kompetenzen", label: "Kompetenzen" },

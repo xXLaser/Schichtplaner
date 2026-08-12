@@ -16,8 +16,17 @@ import { toISODate } from "@/lib/dates";
 
 type Competency = { id: string; name: string; color: string };
 type ShiftPreference = "ANY" | "DAY_ONLY" | "NIGHT_ONLY" | "ROTATING";
-type ShiftKind = "DAY" | "NIGHT";
+type ShiftKind = "DAY" | "NIGHT" | "INTERMEDIATE";
 type HoursPeriod = "MONTH" | "QUARTER";
+type EmploymentType = "FULL_TIME" | "PART_TIME";
+type DutyModel = "ROTATION_4_4" | "WEEKDAYS" | "CUSTOM";
+type ShiftTemplate = {
+  id: string;
+  name: string;
+  startTime: string;
+  endTime: string;
+  kind: ShiftKind;
+};
 
 type Employee = {
   id: string;
@@ -32,6 +41,17 @@ type Employee = {
   rotationStartKind: ShiftKind;
   targetHours: number | null;
   hoursPeriod: HoursPeriod;
+  employmentType: EmploymentType;
+  dutyModel: DutyModel;
+  dutyOnDays: number;
+  dutyOffDays: number;
+  dutyCycleStartDate: string | null;
+  allowFifthShiftPerMonth: boolean;
+  partTimeStartTime: string;
+  partTimeEndTime: string;
+  workWeekdays: string;
+  allowIntermediateShifts: boolean;
+  defaultShiftTemplateId: string | null;
   competencies: { competency: Competency }[];
 };
 
@@ -42,9 +62,16 @@ const PREFERENCE_LABELS: Record<ShiftPreference, string> = {
   ROTATING: "Wechseldienst",
 };
 
+const DUTY_LABELS: Record<DutyModel, string> = {
+  ROTATION_4_4: "4/4 (Dienst/Frei)",
+  WEEKDAYS: "Mo–Fr Teilzeit",
+  CUSTOM: "Individueller Zyklus",
+};
+
 export default function MitarbeiterPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [competencies, setCompetencies] = useState<Competency[]>([]);
+  const [shifts, setShifts] = useState<ShiftTemplate[]>([]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [maxShifts, setMaxShifts] = useState(5);
@@ -58,6 +85,20 @@ export default function MitarbeiterPage() {
   const [rotationStartKind, setRotationStartKind] = useState<ShiftKind>("DAY");
   const [targetHours, setTargetHours] = useState<string>("");
   const [hoursPeriod, setHoursPeriod] = useState<HoursPeriod>("MONTH");
+  const [employmentType, setEmploymentType] =
+    useState<EmploymentType>("FULL_TIME");
+  const [dutyModel, setDutyModel] = useState<DutyModel>("ROTATION_4_4");
+  const [dutyOnDays, setDutyOnDays] = useState(4);
+  const [dutyOffDays, setDutyOffDays] = useState(4);
+  const [dutyCycleStartDate, setDutyCycleStartDate] = useState(() =>
+    toISODate(new Date()),
+  );
+  const [allowFifth, setAllowFifth] = useState(true);
+  const [partTimeStart, setPartTimeStart] = useState("09:00");
+  const [partTimeEnd, setPartTimeEnd] = useState("15:00");
+  const [workWeekdays, setWorkWeekdays] = useState("1,2,3,4,5");
+  const [allowIntermediate, setAllowIntermediate] = useState(false);
+  const [defaultShiftId, setDefaultShiftId] = useState("");
   const [editing, setEditing] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,9 +107,10 @@ export default function MitarbeiterPage() {
     setLoading(true);
     setError(null);
     try {
-      const [e, c] = await Promise.all([
+      const [e, c, s] = await Promise.all([
         apiGet<Employee[]>("/api/employees"),
         apiGet<Competency[]>("/api/competencies"),
+        apiGet<ShiftTemplate[]>("/api/shifts"),
       ]);
       if (!Array.isArray(e) || !Array.isArray(c)) {
         throw new Error(
@@ -77,6 +119,7 @@ export default function MitarbeiterPage() {
       }
       setEmployees(e);
       setCompetencies(c);
+      setShifts(Array.isArray(s) ? s : []);
     } catch (err) {
       setEmployees([]);
       setCompetencies([]);
@@ -96,6 +139,26 @@ export default function MitarbeiterPage() {
     );
   }
 
+  function applyEmploymentDefaults(type: EmploymentType) {
+    setEmploymentType(type);
+    if (type === "PART_TIME") {
+      setDutyModel("WEEKDAYS");
+      setMaxShifts(5);
+      setPartTimeStart("09:00");
+      setPartTimeEnd("15:00");
+      setWorkWeekdays("1,2,3,4,5");
+      setAllowFifth(false);
+      setTargetHours("120");
+    } else {
+      setDutyModel("ROTATION_4_4");
+      setDutyOnDays(4);
+      setDutyOffDays(4);
+      setAllowFifth(true);
+      setMaxShifts(5);
+      setTargetHours("160");
+    }
+  }
+
   function startEdit(emp: Employee) {
     setEditing(emp);
     setName(emp.name);
@@ -105,10 +168,25 @@ export default function MitarbeiterPage() {
     setSelected(emp.competencies.map((c) => c.competency.id));
     setShiftPreference(emp.shiftPreference ?? "ANY");
     setRotationWeeks(emp.rotationWeeks ?? 1);
-    setRotationStartDate(emp.rotationStartDate?.slice(0, 10) ?? toISODate(new Date()));
+    setRotationStartDate(
+      emp.rotationStartDate?.slice(0, 10) ?? toISODate(new Date()),
+    );
     setRotationStartKind(emp.rotationStartKind ?? "DAY");
     setTargetHours(emp.targetHours != null ? String(emp.targetHours) : "");
     setHoursPeriod(emp.hoursPeriod ?? "MONTH");
+    setEmploymentType(emp.employmentType ?? "FULL_TIME");
+    setDutyModel(emp.dutyModel ?? "ROTATION_4_4");
+    setDutyOnDays(emp.dutyOnDays ?? 4);
+    setDutyOffDays(emp.dutyOffDays ?? 4);
+    setDutyCycleStartDate(
+      emp.dutyCycleStartDate?.slice(0, 10) ?? toISODate(new Date()),
+    );
+    setAllowFifth(emp.allowFifthShiftPerMonth ?? true);
+    setPartTimeStart(emp.partTimeStartTime ?? "09:00");
+    setPartTimeEnd(emp.partTimeEndTime ?? "15:00");
+    setWorkWeekdays(emp.workWeekdays ?? "1,2,3,4,5");
+    setAllowIntermediate(emp.allowIntermediateShifts ?? false);
+    setDefaultShiftId(emp.defaultShiftTemplateId ?? "");
   }
 
   function resetForm() {
@@ -122,8 +200,19 @@ export default function MitarbeiterPage() {
     setRotationWeeks(1);
     setRotationStartDate(toISODate(new Date()));
     setRotationStartKind("DAY");
-    setTargetHours("");
+    setTargetHours("160");
     setHoursPeriod("MONTH");
+    setEmploymentType("FULL_TIME");
+    setDutyModel("ROTATION_4_4");
+    setDutyOnDays(4);
+    setDutyOffDays(4);
+    setDutyCycleStartDate(toISODate(new Date()));
+    setAllowFifth(true);
+    setPartTimeStart("09:00");
+    setPartTimeEnd("15:00");
+    setWorkWeekdays("1,2,3,4,5");
+    setAllowIntermediate(false);
+    setDefaultShiftId("");
   }
 
   async function onSubmit(e: FormEvent) {
@@ -141,6 +230,18 @@ export default function MitarbeiterPage() {
       rotationStartKind,
       targetHours: targetHours === "" ? null : Number(targetHours),
       hoursPeriod,
+      employmentType,
+      dutyModel,
+      dutyOnDays,
+      dutyOffDays,
+      dutyCycleStartDate:
+        dutyModel === "WEEKDAYS" ? null : dutyCycleStartDate || null,
+      allowFifthShiftPerMonth: allowFifth,
+      partTimeStartTime: partTimeStart,
+      partTimeEndTime: partTimeEnd,
+      workWeekdays,
+      allowIntermediateShifts: allowIntermediate,
+      defaultShiftTemplateId: defaultShiftId || null,
     };
 
     try {
@@ -173,8 +274,26 @@ export default function MitarbeiterPage() {
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Aktualisieren fehlgeschlagen");
+      setError(
+        err instanceof Error ? err.message : "Aktualisieren fehlgeschlagen",
+      );
     }
+  }
+
+  function modelSummary(emp: Employee): string {
+    const parts = [
+      emp.employmentType === "PART_TIME" ? "Teilzeit" : "Vollzeit",
+      DUTY_LABELS[emp.dutyModel] ?? emp.dutyModel,
+    ];
+    if (emp.dutyModel === "ROTATION_4_4" || emp.dutyModel === "CUSTOM") {
+      parts.push(`${emp.dutyOnDays}/${emp.dutyOffDays}`);
+      if (emp.allowFifthShiftPerMonth) parts.push("5. Dienst/Monat möglich");
+    }
+    if (emp.dutyModel === "WEEKDAYS") {
+      parts.push(`${emp.partTimeStartTime}–${emp.partTimeEndTime}`);
+    }
+    if (emp.allowIntermediateShifts) parts.push("Zwischendienst ok");
+    return parts.join(" · ");
   }
 
   function preferenceSummary(emp: Employee): string {
@@ -185,16 +304,20 @@ export default function MitarbeiterPage() {
     return PREFERENCE_LABELS[emp.shiftPreference] ?? "Egal";
   }
 
+  const showCycle =
+    dutyModel === "ROTATION_4_4" || dutyModel === "CUSTOM";
+  const showPartTime = dutyModel === "WEEKDAYS";
+
   return (
     <div className="animate-fade-up">
       <PageHeader
         title="Mitarbeiter"
-        subtitle="Kompetenzen, Schichtpräferenz und Sollstunden hinterlegen – der Planer berücksichtigt alles automatisch."
+        subtitle="Dienstmodell, Kompetenzen und Sollstunden – Grundlage für Ursprungsdienstplan und automatische Planung."
       />
 
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
 
-      <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[400px_1fr]">
         <Panel>
           <h2 className="mb-4 font-[family-name:var(--font-display)] text-lg">
             {editing ? "Bearbeiten" : "Neu anlegen"}
@@ -213,14 +336,6 @@ export default function MitarbeiterPage() {
               onChange={(e) => setEmail(e.target.value)}
             />
             <Input
-              label="Max. Schichten / Woche"
-              type="number"
-              min={1}
-              max={14}
-              value={maxShifts}
-              onChange={(e) => setMaxShifts(Number(e.target.value))}
-            />
-            <Input
               label="Urlaubstage / Jahr"
               type="number"
               min={0}
@@ -231,7 +346,142 @@ export default function MitarbeiterPage() {
 
             <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 space-y-3">
               <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
-                Schichtpräferenz
+                Dienstmodell
+              </p>
+              <Select
+                label="Beschäftigung"
+                value={employmentType}
+                onChange={(e) =>
+                  applyEmploymentDefaults(e.target.value as EmploymentType)
+                }
+              >
+                <option value="FULL_TIME">Vollzeit</option>
+                <option value="PART_TIME">Teilzeit</option>
+              </Select>
+              <Select
+                label="Modell"
+                value={dutyModel}
+                onChange={(e) => {
+                  const m = e.target.value as DutyModel;
+                  setDutyModel(m);
+                  if (m === "WEEKDAYS") setEmploymentType("PART_TIME");
+                  if (m === "ROTATION_4_4") {
+                    setDutyOnDays(4);
+                    setDutyOffDays(4);
+                    setEmploymentType("FULL_TIME");
+                  }
+                }}
+              >
+                <option value="ROTATION_4_4">4 Tage Dienst / 4 Tage frei</option>
+                <option value="WEEKDAYS">Mo–Fr (Teilzeit 9–15)</option>
+                <option value="CUSTOM">Individueller Dienst/Frei-Zyklus</option>
+              </Select>
+
+              {showCycle ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      label="Tage Dienst"
+                      type="number"
+                      min={1}
+                      max={14}
+                      value={dutyOnDays}
+                      onChange={(e) => setDutyOnDays(Number(e.target.value))}
+                    />
+                    <Input
+                      label="Tage frei"
+                      type="number"
+                      min={0}
+                      max={14}
+                      value={dutyOffDays}
+                      onChange={(e) => setDutyOffDays(Number(e.target.value))}
+                    />
+                  </div>
+                  <Input
+                    label="Zyklus startet am"
+                    type="date"
+                    value={dutyCycleStartDate}
+                    onChange={(e) => setDutyCycleStartDate(e.target.value)}
+                  />
+                  <label className="flex items-start gap-2 text-sm text-[var(--ink-soft)]">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={allowFifth}
+                      onChange={(e) => setAllowFifth(e.target.checked)}
+                    />
+                    <span>
+                      Überstundenpauschale: einmal im Monat bis zu 5 Dienste in
+                      einer Woche erlaubt
+                    </span>
+                  </label>
+                </>
+              ) : null}
+
+              {showPartTime ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input
+                      label="Von"
+                      type="time"
+                      value={partTimeStart}
+                      onChange={(e) => setPartTimeStart(e.target.value)}
+                    />
+                    <Input
+                      label="Bis"
+                      type="time"
+                      value={partTimeEnd}
+                      onChange={(e) => setPartTimeEnd(e.target.value)}
+                    />
+                  </div>
+                  <Input
+                    label="Wochentage (1=Mo … 7=So)"
+                    value={workWeekdays}
+                    onChange={(e) => setWorkWeekdays(e.target.value)}
+                    placeholder="1,2,3,4,5"
+                  />
+                </>
+              ) : null}
+
+              <label className="flex items-start gap-2 text-sm text-[var(--ink-soft)]">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={allowIntermediate}
+                  onChange={(e) => setAllowIntermediate(e.target.checked)}
+                />
+                <span>
+                  Zwischendienste erlaubt (z.&nbsp;B. 11–23 Uhr; Ruhezeit 12 Std.
+                  gilt trotzdem)
+                </span>
+              </label>
+
+              <Select
+                label="Standard-Schicht (optional)"
+                value={defaultShiftId}
+                onChange={(e) => setDefaultShiftId(e.target.value)}
+              >
+                <option value="">— automatisch —</option>
+                {shifts.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.startTime}–{s.endTime})
+                  </option>
+                ))}
+              </Select>
+
+              <Input
+                label="Max. Schichten / Woche (Orientierung)"
+                type="number"
+                min={1}
+                max={14}
+                value={maxShifts}
+                onChange={(e) => setMaxShifts(Number(e.target.value))}
+              />
+            </div>
+
+            <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 space-y-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
+                Schichtpräferenz (Tag/Nacht)
               </p>
               <Select
                 label="Präferenz"
@@ -272,10 +522,6 @@ export default function MitarbeiterPage() {
                     value={rotationStartDate}
                     onChange={(e) => setRotationStartDate(e.target.value)}
                   />
-                  <p className="text-xs text-[var(--muted)]">
-                    z. B. 1 Woche = wöchentlicher Wechsel Tag/Nacht, 2 Wochen =
-                    zwei Wochen Tag, dann zwei Wochen Nacht usw.
-                  </p>
                 </>
               ) : null}
             </div>
@@ -303,10 +549,6 @@ export default function MitarbeiterPage() {
                   <option value="QUARTER">pro Quartal</option>
                 </Select>
               </div>
-              <p className="text-xs text-[var(--muted)]">
-                Leer lassen, wenn Stunden keine Rolle spielen sollen (dann zählt
-                „Max. Schichten“).
-              </p>
             </div>
 
             <div>
@@ -359,11 +601,14 @@ export default function MitarbeiterPage() {
                       {emp.name}
                     </h3>
                     <p className="text-sm text-[var(--muted)]">
-                      {emp.email || "Keine E-Mail"} · max. {emp.maxShifts} Schichten
-                      · {emp.vacationDaysPerYear ?? 30} Urlaubstage
+                      {emp.email || "Keine E-Mail"} ·{" "}
+                      {emp.vacationDaysPerYear ?? 30} Urlaubstage
                       {!emp.active ? " · inaktiv" : ""}
                     </p>
                     <p className="mt-1 text-sm text-[var(--ink-soft)]">
+                      {modelSummary(emp)}
+                    </p>
+                    <p className="mt-0.5 text-sm text-[var(--ink-soft)]">
                       {preferenceSummary(emp)}
                       {emp.targetHours != null
                         ? ` · Ziel: ${emp.targetHours} Std./${emp.hoursPeriod === "QUARTER" ? "Quartal" : "Monat"}`

@@ -11,7 +11,7 @@ import {
 } from "@/components/ui";
 
 type Competency = { id: string; name: string; color: string };
-type ShiftKind = "DAY" | "NIGHT";
+type ShiftKind = "DAY" | "NIGHT" | "INTERMEDIATE";
 type Requirement = {
   competencyId: string;
   minCount: number;
@@ -172,12 +172,13 @@ export default function SchichtenPage() {
               />
             </div>
             <Select
-              label="Schichtart (für Tag-/Nacht-Präferenzen der Mitarbeiter)"
+              label="Schichtart"
               value={kind}
               onChange={(e) => setKind(e.target.value as ShiftKind)}
             >
               <option value="DAY">Tag</option>
               <option value="NIGHT">Nacht</option>
+              <option value="INTERMEDIATE">Zwischendienst (z. B. 11–23)</option>
             </Select>
 
             <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
@@ -253,10 +254,16 @@ export default function SchichtenPage() {
                         className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                           s.kind === "NIGHT"
                             ? "bg-slate-700 text-white"
-                            : "bg-amber-100 text-amber-800"
+                            : s.kind === "INTERMEDIATE"
+                              ? "bg-violet-100 text-violet-800"
+                              : "bg-amber-100 text-amber-800"
                         }`}
                       >
-                        {s.kind === "NIGHT" ? "Nacht" : "Tag"}
+                        {s.kind === "NIGHT"
+                          ? "Nacht"
+                          : s.kind === "INTERMEDIATE"
+                            ? "Zwischen"
+                            : "Tag"}
                       </span>
                     </div>
                     <p className="text-sm text-[var(--muted)]">
