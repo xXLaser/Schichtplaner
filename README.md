@@ -7,7 +7,18 @@ Web-App zum Erstellen von Dienstplänen mit:
 - **Urlaub & Krankenstand** – Abwesenheiten erfassen
 - **Automatische Planung & Kompensation** – Plan generieren; Abwesende werden ausgeschlossen und durch passende Kollegen ersetzt
 
-## Starten
+## Installation unter Windows (empfohlen)
+
+Für eine **vollständige, leicht verständliche Anleitung** (auch ohne Technikkenntnisse):
+
+**→ [INSTALLATION-WINDOWS.md](INSTALLATION-WINDOWS.md)**
+
+Kurzfassung nach der Ersteinrichtung:
+
+1. Doppelklick auf `starten.bat`
+2. Browser öffnen: [http://localhost:3000](http://localhost:3000)
+
+## Starten (für Fortgeschrittene)
 
 ```bash
 npm install
