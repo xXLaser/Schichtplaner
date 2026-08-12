@@ -13,6 +13,18 @@
   --danger: #b91c1c;
   --warn: #b45309;
   --ok: #047857;
+
+  /*
+   * Systemschriften statt next/font/google: der Build braucht dadurch
+   * keinen Internetzugriff zu fonts.googleapis.com (wichtig auf
+   * abgeschotteten Windows-Servern).
+   */
+  --font-display:
+    "Segoe UI Semibold", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-body:
+    "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial,
+    sans-serif;
 }
 
 @theme inline {

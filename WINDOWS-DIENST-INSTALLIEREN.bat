@@ -30,6 +30,28 @@ if errorlevel 1 (
   goto :END
 )
 
+for /f "delims=" %%N in ('where node') do (
+  set "NODE_EXE=%%N"
+  goto :NODE_FOUND
+)
+:NODE_FOUND
+echo Node.js gefunden unter: %NODE_EXE%
+node -v
+echo.
+
+if not exist "node_modules\" (
+  echo node_modules fehlt - Pakete werden installiert ...
+  echo ^(dies kann beim ersten Mal mehrere Minuten dauern^)
+  echo.
+  call npm install
+  if errorlevel 1 (
+    echo.
+    echo FEHLER bei npm install.
+    echo Pruefen Sie die Internetverbindung des Servers.
+    goto :END
+  )
+)
+
 set "NSSM_DIR=%~dp0tools\nssm"
 set "NSSM_EXE=%NSSM_DIR%\nssm.exe"
 
@@ -64,13 +86,16 @@ set "APP_DIR=%~dp0dist-windows-dienst"
 set "SERVICE_NAME=Schichtwerk"
 
 echo.
-echo Richte Datenbank ein ...
-if not exist "%APP_DIR%\prisma\dev.db" (
-  pushd "%APP_DIR%"
-  set "DATABASE_URL=file:%APP_DIR%\prisma\dev.db"
-  call node node_modules\prisma\build\index.js migrate deploy
+echo Richte Datenbank ein ^(Migrationen anwenden - unschaedlich, falls bereits aktuell^) ...
+pushd "%APP_DIR%"
+set "DATABASE_URL=file:%APP_DIR%\prisma\dev.db"
+call node node_modules\prisma\build\index.js migrate deploy
+if errorlevel 1 (
+  echo FEHLER bei der Datenbank-Migration.
   popd
+  goto :END
 )
+popd
 
 echo.
 echo Entferne evtl. vorhandenen alten Dienst ...
@@ -78,7 +103,7 @@ echo Entferne evtl. vorhandenen alten Dienst ...
 "%NSSM_EXE%" remove %SERVICE_NAME% confirm >nul 2>&1
 
 echo Installiere Windows-Dienst "%SERVICE_NAME%" ...
-"%NSSM_EXE%" install %SERVICE_NAME% "node.exe" "windows-dienst-start.cjs"
+"%NSSM_EXE%" install %SERVICE_NAME% "%NODE_EXE%" "windows-dienst-start.cjs"
 if errorlevel 1 (
   echo FEHLER: Dienst konnte nicht installiert werden.
   goto :END
@@ -98,15 +123,27 @@ echo Starte Dienst ...
 "%NSSM_EXE%" start %SERVICE_NAME%
 
 echo.
+echo Pruefe, ob der Dienst wirklich antwortet ^(kann etwas dauern^) ...
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\check-health.ps1"
+set "HEALTH_OK=%errorlevel%"
+
+echo.
 echo ================================================================
-echo  FERTIG
+if "%HEALTH_OK%"=="0" (
+  echo  FERTIG - Server laeuft
+) else (
+  echo  ACHTUNG - Dienst installiert, antwortet aber noch NICHT
+  echo  Bitte pruefen:
+  echo    %NSSM_EXE% status %SERVICE_NAME%
+  echo    Log ansehen: %APP_DIR%\dienst-fehler.txt
+)
 echo ================================================================
 echo  Dienstname:    %SERVICE_NAME%
 echo  Programmordner: %APP_DIR%
 echo  Log-Dateien:    %APP_DIR%\dienst-log.txt
 echo                  %APP_DIR%\dienst-fehler.txt
 echo.
-echo  Test im Browser (nach ca. 10-20 Sekunden):
+echo  Test im Browser:
 echo    http://localhost:3000/api/health
 echo    http://SERVER-IP:3000/api/health
 echo.

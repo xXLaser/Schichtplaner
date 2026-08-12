@@ -63,6 +63,12 @@ WEG 1: WINDOWS-DIENST (ohne Docker) – EMPFOHLEN
 4. Fertig. Der Dienst laeuft ab jetzt automatisch bei jedem Windows-Start,
    auch ohne angemeldeten Benutzer und ohne offenes Fenster.
 
+Das Skript prueft am Ende automatisch, ob der Server wirklich antwortet.
+Steht dort "ACHTUNG - Dienst installiert, antwortet aber noch NICHT":
+  - dist-windows-dienst\dienst-fehler.txt oeffnen und die letzte Meldung lesen
+  - haeufigste Ursachen: Port 3000 bereits belegt, oder die Datenbank-Migration
+    ist fehlgeschlagen (siehe dienst-log.txt)
+
 Verwaltung:
   - services.msc oeffnen, dort "Schichtwerk" suchen
     (Starten/Stoppen/Neustarten moeglich)
