@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Competency {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  color       String   @default("#0d9488")
+  createdAt   DateTime @default(now())
+
+  employees    EmployeeCompetency[]
+  requirements ShiftRequirement[]
+}
+
+model Employee {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?
+  active    Boolean  @default(true)
+  maxShifts Int      @default(5)
+  createdAt DateTime @default(now())
+
+  competencies EmployeeCompetency[]
+  absences     Absence[]
+  assignments  Assignment[]
+}
+
+model EmployeeCompetency {
+  employeeId    String
+  competencyId  String
+  employee      Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  competency    Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, competencyId])
+}
+
+model Absence {
+  id         String      @id @default(cuid())
+  employeeId String
+  type       AbsenceType
+  startDate  DateTime
+  endDate    DateTime
+  note       String?
+  createdAt  DateTime    @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+enum AbsenceType {
+  VACATION
+  SICK
+  OTHER
+}
+
+model ShiftTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  startTime String
+  endTime   String
+  color     String   @default("#334155")
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  requirements ShiftRequirement[]
+  assignments  Assignment[]
+}
+
+model ShiftRequirement {
+  id              String @id @default(cuid())
+  shiftTemplateId String
+  competencyId    String
+  minCount        Int    @default(1)
+
+  shiftTemplate ShiftTemplate @relation(fields: [shiftTemplateId], references: [id], onDelete: Cascade)
+  competency    Competency    @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+
+  @@unique([shiftTemplateId, competencyId])
+}
+
+model Assignment {
+  id              String   @id @default(cuid())
+  date            DateTime
+  shiftTemplateId String
+  employeeId      String
+  competencyId    String?
+  createdAt       DateTime @default(now())
+
+  shiftTemplate ShiftTemplate @relation(fields: [shiftTemplateId], references: [id], onDelete: Cascade)
+  employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([date, shiftTemplateId, employeeId])
+  @@index([date])
+}

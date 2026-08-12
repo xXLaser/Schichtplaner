@@ -1,0 +1,42 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { z } from "zod";
+
+export async function GET() {
+  const employees = await prisma.employee.findMany({
+    orderBy: { name: "asc" },
+    include: {
+      competencies: { include: { competency: true } },
+      absences: { orderBy: { startDate: "desc" }, take: 5 },
+      _count: { select: { assignments: true } },
+    },
+  });
+  return NextResponse.json(employees);
+}
+
+const schema = z.object({
+  name: z.string().min(1),
+  email: z.string().email().optional().nullable().or(z.literal("")),
+  active: z.boolean().optional(),
+  maxShifts: z.number().int().min(1).max(14).optional(),
+  competencyIds: z.array(z.string()).optional(),
+});
+
+export async function POST(req: NextRequest) {
+  const body = schema.parse(await req.json());
+  const employee = await prisma.employee.create({
+    data: {
+      name: body.name,
+      email: body.email || null,
+      active: body.active ?? true,
+      maxShifts: body.maxShifts ?? 5,
+      competencies: body.competencyIds
+        ? {
+            create: body.competencyIds.map((competencyId) => ({ competencyId })),
+          }
+        : undefined,
+    },
+    include: { competencies: { include: { competency: true } } },
+  });
+  return NextResponse.json(employee, { status: 201 });
+}
