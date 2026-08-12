@@ -1,60 +1,58 @@
 @echo off
-chcp 65001 >nul
+setlocal EnableExtensions
 title Schichtwerk
 cd /d "%~dp0"
 
 echo.
-echo  ========================================
-echo   Schichtwerk wird gestartet ...
-echo  ========================================
+echo ========================================
+echo  Schichtwerk Start (Entwicklungsmodus)
+echo ========================================
 echo.
-echo  Bitte dieses Fenster offen lassen.
-echo  Danach im Browser oeffnen:
+echo Ordner: %CD%
+echo ========================================
 echo.
-echo      http://localhost:3000
-echo.
-echo  Zum Beenden: Fenster schliessen
-echo  oder Strg+C druecken.
-echo  ========================================
-echo.
+
+where node >nul 2>&1
+if errorlevel 1 (
+  echo FEHLER: Node.js nicht gefunden. Siehe INSTALLATION-WINDOWS.md
+  goto :END
+)
+
+if not exist "package.json" (
+  echo FEHLER: package.json fehlt. Falscher Ordner?
+  goto :END
+)
 
 if not exist "node_modules\" (
-  echo  Erster Start: Pakete werden installiert ...
+  echo Pakete werden installiert ...
   call npm install
   if errorlevel 1 (
-    echo.
-    echo  FEHLER bei npm install.
-    echo  Ist Node.js installiert? Siehe INSTALLATION-WINDOWS.md
-    pause
-    exit /b 1
+    echo FEHLER bei npm install
+    goto :END
   )
 )
 
-if not exist ".env" (
-  if exist ".env.example" (
-    copy ".env.example" ".env" >nul
-    echo  Datei .env wurde aus .env.example erstellt.
-  )
+if exist "scripts\ensure-env.cjs" (
+  call node scripts\ensure-env.cjs
 )
-
-echo  Umgebungsdatei wird geprueft ...
-call node scripts\ensure-env.cjs
 
 if not exist "prisma\dev.db" (
-  echo  Datenbank wird eingerichtet ...
+  echo Datenbank wird eingerichtet ...
   call npx prisma migrate deploy
   if errorlevel 1 (
-    call npx prisma migrate dev --name init
+    echo FEHLER bei der Datenbank-Einrichtung
+    goto :END
   )
-  if errorlevel 1 (
-    echo.
-    echo  FEHLER bei der Datenbank-Einrichtung.
-    pause
-    exit /b 1
-  )
-  echo  Beispieldaten werden geladen ...
   call npm run db:seed
 )
 
+echo.
+echo Server startet. Browser: http://localhost:3000
+echo Fenster offen lassen. Beenden mit Strg+C.
+echo.
 call npm run dev
+
+:END
+echo.
 pause
+endlocal

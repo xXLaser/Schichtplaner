@@ -315,16 +315,31 @@ Achtung: Dadurch werden bestehende Einträge gelöscht und die Beispieldaten neu
 
 Für den Einsatz auf einem dedizierten Server:
 
-1. Projekt z. B. nach `C:\Schichtwerk` legen (kein Netzlaufwerk)
-2. Doppelklick auf **`starten-server.bat`**
-   - richtet `.env` mit absolutem Datenbankpfad ein
-   - führt Migrationen aus
-   - lädt Beispieldaten, falls leer
-   - startet den Server für Netzwerzugriff (`0.0.0.0:3000`)
-3. Firewall: Port **3000 TCP** freigeben
-4. Im Browser testen: `http://SERVER-IP:3000/api/health`
+1. Projekt z. B. nach `C:\Schichtwerk` legen (**kein Netzlaufwerk**, keine Sonderzeichen im Pfad)
+2. Rechtsklick auf **`starten-server.bat`** → **Als Administrator ausführen**  
+   (oder Doppelklick auf `starten-server-fenster-offen.bat`, dann bleibt das Fenster sicher offen)
+3. Warten bis „Server startet jetzt…“ erscheint
+4. Firewall: Port **3000 TCP** freigeben
+5. Im Browser testen: `http://SERVER-IP:3000/api/health`
 
-Das Fenster von `starten-server.bat` muss offen bleiben. Für echten Dauerbetrieb kann die IT später einen Windows-Dienst einrichten.
+Das schwarze Fenster muss **offen bleiben**. Schließt es sich sofort, nutzen Sie `starten-server-fenster-offen.bat` und lesen Sie die Fehlermeldung.
+
+### starten-server.bat schließt sich sofort
+
+1. `starten-server-fenster-offen.bat` verwenden – dort bleibt der Fehlertext stehen  
+2. Prüfen, ob Node.js installiert ist: Windows-Taste → `cmd` → `node -v`  
+3. Prüfen, ob die Datei im richtigen Ordner liegt (dort muss `package.json` sein)  
+4. Ordner lokal halten, z. B. `C:\Schichtwerk` (nicht Desktop-ZIP, nicht OneDrive/Netzlaufwerk)  
+5. Gezeigten Fehlertext abschreiben oder Screenshot machen
+
+Häufige Meldungen:
+
+| Meldung | Bedeutung |
+| --- | --- |
+| Node.js wurde nicht gefunden | Node.js LTS installieren, PC neu starten |
+| package.json fehlt | Falscher Ordner / ZIP nicht vollständig entpackt |
+| prisma migrate deploy fehlgeschlagen | Ordnerrechte oder fehlende `.env` – Skript legt `.env` normalerweise selbst an |
+| Port already in use | Port 3000 belegt – anderen Port nutzen oder alten Node-Prozess beenden |
 
 ---
 

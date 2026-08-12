@@ -1,91 +1,93 @@
 @echo off
-chcp 65001 >nul
+setlocal EnableExtensions
 title Schichtwerk Server
 cd /d "%~dp0"
 
 echo.
-echo  ========================================
-echo   Schichtwerk - Windows Server Start
-echo  ========================================
+echo ========================================
+echo  Schichtwerk - Windows Server Start
+echo ========================================
 echo.
-echo  Dieses Fenster muss offen bleiben.
-echo  Erreichbar im Netzwerk unter:
+echo Projektordner:
+echo %CD%
 echo.
-echo      http://DIESE-SERVER-IP:3000
-echo.
-echo  Diagnose im Browser:
-echo      http://DIESE-SERVER-IP:3000/api/health
-echo  ========================================
+echo Dieses Fenster bleibt bei Fehlern offen.
+echo ========================================
 echo.
 
 where node >nul 2>&1
 if errorlevel 1 (
-  echo  FEHLER: Node.js nicht gefunden. Bitte Node.js LTS installieren.
-  pause
-  exit /b 1
+  echo FEHLER: Node.js wurde nicht gefunden.
+  echo.
+  echo Bitte Node.js LTS installieren von:
+  echo https://nodejs.org/
+  echo.
+  echo Danach den PC neu starten und diese Datei erneut oeffnen.
+  echo.
+  goto :END
 )
 
-if not exist "node_modules\" (
-  echo  Pakete werden installiert ...
-  call npm install
-  if errorlevel 1 (
-    echo  FEHLER bei npm install
-    pause
-    exit /b 1
-  )
-)
-
-echo  Umgebungsdatei wird vorbereitet ...
-call node scripts\ensure-env.cjs
+where npm >nul 2>&1
 if errorlevel 1 (
-  echo  FEHLER beim Erstellen der .env
-  pause
-  exit /b 1
+  echo FEHLER: npm wurde nicht gefunden.
+  echo Node.js bitte neu installieren und "npm" mitinstallieren lassen.
+  echo.
+  goto :END
 )
 
-echo  Prisma Client wird erzeugt ...
-call npx prisma generate
+echo Node.js Version:
+node -v
+echo npm Version:
+npm -v
+echo.
+
+if not exist "package.json" (
+  echo FEHLER: package.json fehlt.
+  echo Liegt starten-server.bat wirklich im Schichtwerk-Ordner?
+  echo.
+  goto :END
+)
+
+if not exist "scripts\prepare-server.cjs" (
+  echo FEHLER: scripts\prepare-server.cjs fehlt.
+  echo Bitte den neuesten Stand des Projekts herunterladen.
+  echo.
+  goto :END
+)
+
+echo Vorbereitung laeuft ...
+call node scripts\prepare-server.cjs
 if errorlevel 1 (
-  echo  FEHLER bei prisma generate
-  pause
-  exit /b 1
-)
-
-echo  Datenbank-Migrationen werden angewendet ...
-call npx prisma migrate deploy
-if errorlevel 1 (
-  echo  FEHLER bei prisma migrate deploy
-  echo  Tipp: Liegt der Ordner auf einem Netzlaufwerk? Besser lokal speichern.
-  pause
-  exit /b 1
-)
-
-if not exist "prisma\dev.db" (
-  echo  FEHLER: prisma\dev.db wurde nicht erstellt.
-  pause
-  exit /b 1
-)
-
-REM Beispieldaten nur wenn noch keine Mitarbeiter existieren
-for /f "usebackq delims=" %%A in (`node -e "const {PrismaClient}=require('@prisma/client'); const p=new PrismaClient(); p.employee.count().then(c=>{console.log(c); return p.$disconnect()}).catch(e=>{console.log('ERR'); console.error(e); process.exit(1)})"`) do set EMPCOUNT=%%A
-if "%EMPCOUNT%"=="0" (
-  echo  Keine Mitarbeiter gefunden - Beispieldaten werden geladen ...
-  call npm run db:seed
-)
-
-if not exist ".next\BUILD_ID" (
-  echo  Produktionsbuild wird erstellt (einmalig, kann dauern) ...
-  call npm run build
-  if errorlevel 1 (
-    echo  FEHLER beim Build
-    pause
-    exit /b 1
-  )
+  echo.
+  echo FEHLER bei der Vorbereitung.
+  echo Scrollen Sie nach oben und lesen Sie die rote/letzte Meldung.
+  echo.
+  goto :END
 )
 
 echo.
-echo  Server startet jetzt auf Port 3000 ...
-echo  Firewall: Port 3000 TCP eingehend freigeben (nicht nur "Node.js").
+echo Server startet jetzt auf Port 3000 ...
+echo Im Browser testen:
+echo   http://localhost:3000/api/health
+echo   http://SERVER-IP:3000/api/health
 echo.
+echo Firewall: Port 3000 TCP eingehend freigeben.
+echo Zum Beenden: Strg+C oder Fenster schliessen.
+echo.
+
 call npx next start --hostname 0.0.0.0 --port 3000
+if errorlevel 1 (
+  echo.
+  echo FEHLER: Server konnte nicht gestartet werden.
+  echo Laeuft Port 3000 schon? Dann anderen Port testen:
+  echo   npx next start --hostname 0.0.0.0 --port 3001
+  echo.
+)
+
+:END
+echo.
+echo ---------------------------------------
+echo Fenster schliesst erst nach Taste...
+echo ---------------------------------------
 pause
+endlocal
