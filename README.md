@@ -43,6 +43,21 @@ npm start
 App: [http://localhost:3000](http://localhost:3000)  
 Diagnose: [http://localhost:3000/api/health](http://localhost:3000/api/health)
 
+### Entwickeln & testen ohne Datenverlust
+
+Die Datenbank wird **nicht** bei jedem Start überschrieben. Seed läuft nur, wenn die DB leer ist (0 Mitarbeiter).
+
+| Befehl | Wirkung |
+| --- | --- |
+| `npm run dev` | App starten – Testdaten bleiben |
+| `npm run db:backup` | Kopie nach `prisma/backups/` |
+| `npm run db:restore` | Neuestes Backup zurückspielen |
+| `npm run db:seed` | **Geschützt:** bricht ab, wenn schon Daten da sind |
+| `npm run db:seed:force` | Beispieldaten erzwingen (löscht alles) |
+| `npm run db:reset` | Schema neu + Seed (löscht alles) |
+
+**Hinweis:** „Plan neu generieren“ löscht nur die **Zuweisungen** im gewählten Zeitraum – Mitarbeiter, Schichten und Abwesenheiten bleiben.
+
 ## Ablauf
 
 1. Kompetenzen anlegen

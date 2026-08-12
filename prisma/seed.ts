@@ -2,7 +2,34 @@ import { PrismaClient, AbsenceType } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+/**
+ * Beispieldaten laden.
+ * Standard: bricht ab, wenn schon Mitarbeiter existieren (schützt Testdaten).
+ * Erzwingen: FORCE_SEED=1 npm run db:seed   oder   npm run db:seed:force
+ */
 async function main() {
+  const force =
+    process.env.FORCE_SEED === "1" ||
+    process.argv.includes("--force");
+
+  const existing = await prisma.employee.count();
+  if (existing > 0 && !force) {
+    console.log(
+      `Abbruch: Es gibt bereits ${existing} Mitarbeiter in der Datenbank.`,
+    );
+    console.log(
+      "Testdaten bleiben erhalten. Zum Überschreiben bewusst ausführen:",
+    );
+    console.log("  npm run db:seed:force");
+    return;
+  }
+
+  if (force && existing > 0) {
+    console.log(
+      `WARNUNG: Bestehende Daten werden gelöscht (${existing} Mitarbeiter) ...`,
+    );
+  }
+
   await prisma.assignment.deleteMany();
   await prisma.absence.deleteMany();
   await prisma.shiftRequirement.deleteMany();

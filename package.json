@@ -10,7 +10,10 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma migrate reset --force && tsx prisma/seed.ts",
+    "db:seed:force": "tsx prisma/seed.ts --force",
+    "db:backup": "node scripts/db-backup.cjs",
+    "db:restore": "node scripts/db-restore.cjs",
+    "db:reset": "prisma migrate reset --force && tsx prisma/seed.ts --force",
     "env:ensure": "node scripts/ensure-env.cjs",
     "postinstall": "prisma generate"
   },
