@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Schichtwerk">
+  <rect width="128" height="128" rx="28" fill="#0f766e"/>
+  <rect x="22" y="28" width="24" height="72" rx="8" fill="#ecfdf5" opacity="0.95"/>
+  <rect x="52" y="44" width="24" height="56" rx="8" fill="#99f6e4" opacity="0.95"/>
+  <rect x="82" y="36" width="24" height="64" rx="8" fill="#5eead4" opacity="0.95"/>
+</svg>
