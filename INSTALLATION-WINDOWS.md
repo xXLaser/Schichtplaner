@@ -313,33 +313,30 @@ Achtung: Dadurch werden bestehende Einträge gelöscht und die Beispieldaten neu
 
 ## Windows-Server / Dauerbetrieb
 
-Für den Einsatz auf einem dedizierten Server:
+Für den Einsatz auf einem dedizierten Server lesen Sie zuerst:
 
-1. Projekt z. B. nach `C:\Schichtwerk` legen (**kein Netzlaufwerk**, keine Sonderzeichen im Pfad)
-2. Rechtsklick auf **`starten-server.bat`** → **Als Administrator ausführen**  
-   (oder Doppelklick auf `starten-server-fenster-offen.bat`, dann bleibt das Fenster sicher offen)
-3. Warten bis „Server startet jetzt…“ erscheint
+**→ [`ANLEITUNG-SERVER.txt`](ANLEITUNG-SERVER.txt)**
+
+Kurzfassung:
+
+1. Aktuellen Stand nach **`C:\Schichtwerk`** entpacken (nicht unter Downloads verschachteln)
+2. **`PRUEFEN.bat`** ausführen – überall `[OK]`
+3. **`starten-server-fenster-offen.bat`** starten
 4. Firewall: Port **3000 TCP** freigeben
-5. Im Browser testen: `http://SERVER-IP:3000/api/health`
+5. Test: `http://SERVER-IP:3000/api/health`
 
-Das schwarze Fenster muss **offen bleiben**. Schließt es sich sofort, nutzen Sie `starten-server-fenster-offen.bat` und lesen Sie die Fehlermeldung.
+### starten-server.bat schließt sich / es passiert nichts
 
-### starten-server.bat schließt sich sofort
+Sehr häufige Ursache laut Praxis: **falscher Ordner** (mehrfach entpacktes ZIP unter Downloads) oder **alte BAT-Datei**.
 
-1. `starten-server-fenster-offen.bat` verwenden – dort bleibt der Fehlertext stehen  
-2. Prüfen, ob Node.js installiert ist: Windows-Taste → `cmd` → `node -v`  
-3. Prüfen, ob die Datei im richtigen Ordner liegt (dort muss `package.json` sein)  
-4. Ordner lokal halten, z. B. `C:\Schichtwerk` (nicht Desktop-ZIP, nicht OneDrive/Netzlaufwerk)  
-5. Gezeigten Fehlertext abschreiben oder Screenshot machen
+1. `PRUEFEN.bat` im Projektordner starten  
+2. Wenn dort Fehler stehen: neu nach `C:\Schichtwerk` entpacken  
+3. Branch-ZIP:  
+   https://github.com/xXLaser/Schichtplaner/archive/refs/heads/cursor/schichtplaner-tool-94b2.zip  
+4. `starten-server-fenster-offen.bat` verwenden und den Text lesen  
 
-Häufige Meldungen:
-
-| Meldung | Bedeutung |
-| --- | --- |
-| Node.js wurde nicht gefunden | Node.js LTS installieren, PC neu starten |
-| package.json fehlt | Falscher Ordner / ZIP nicht vollständig entpackt |
-| prisma migrate deploy fehlgeschlagen | Ordnerrechte oder fehlende `.env` – Skript legt `.env` normalerweise selbst an |
-| Port already in use | Port 3000 belegt – anderen Port nutzen oder alten Node-Prozess beenden |
+Unser aktuelles Startfenster zeigt den Titel **„Schichtwerk - Windows Server Start“**.  
+Steht dort etwas anderes (z. B. nur „Schichtplaner…“), ist es die falsche Datei.
 
 ---
 

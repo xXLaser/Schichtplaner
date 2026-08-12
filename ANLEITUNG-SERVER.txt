@@ -1,0 +1,76 @@
+================================================================================
+SCHICHTWERK – WENN DER SERVER NICHT STARTET (Windows)
+================================================================================
+
+Was Ihr Screenshot zeigt
+------------------------
+1) Der Ordner ist viel zu verschachtelt, z. B.:
+
+   C:\Users\Administrator\Downloads\Schichtplaner-main\...\Web2.0\...
+
+   Das ist fast immer ein mehrfach entpacktes ZIP – dort fehlen oft Dateien
+   oder es liegt eine alte/falsche starten-*.bat.
+
+2) Der Text „Schichtplaner - Window Server Start“ ist NICHT unser aktuelles
+   Startskript. Unser Skript heißt:
+
+   „Schichtwerk - Windows Server Start“
+
+   Wenn Sie etwas anderes sehen, starten Sie die falsche Datei.
+
+
+Richtige Neuinstallation (empfohlen)
+------------------------------------
+1. Alten Download-Ordner ignorieren (nicht weiter darin arbeiten).
+
+2. Diesen ZIP herunterladen (aktueller Stand mit Server-Skripten):
+
+   https://github.com/xXLaser/Schichtplaner/archive/refs/heads/cursor/schichtplaner-tool-94b2.zip
+
+3. ZIP nach genau diesem Ort entpacken:
+
+   C:\Schichtwerk
+
+   Wichtig:
+   - nicht in Downloads liegen lassen
+   - nicht mehrfach in sich selbst entpacken
+   - In C:\Schichtwerk muss DIREKT die Datei package.json liegen
+
+   Richtig:
+   C:\Schichtwerk\package.json
+   C:\Schichtwerk\starten-server.bat
+   C:\Schichtwerk\PRUEFEN.bat
+   C:\Schichtwerk\scripts\prepare-server.cjs
+
+   Falsch:
+   C:\Schichtwerk\Schichtplaner-xxx\Web2.0\...\package.json
+
+4. Doppelklick auf:
+
+   C:\Schichtwerk\PRUEFEN.bat
+
+   Dort muss überall [OK] stehen.
+
+5. Dann Doppelklick auf:
+
+   C:\Schichtwerk\starten-server-fenster-offen.bat
+
+6. Warten bis „Server startet jetzt…“ erscheint (erster Build kann
+   mehrere Minuten dauern – Fenster offen lassen!).
+
+7. Im Browser testen:
+
+   http://localhost:3000/api/health
+   http://SERVER-IP:3000/api/health
+
+
+Firewall
+--------
+Port 3000 TCP eingehend freigeben (nicht nur „Node.js“).
+
+
+Wenn wieder nichts passiert
+---------------------------
+Den kompletten Text aus dem schwarzen Fenster kopieren oder per
+Screenshot schicken – besonders alles NACH „Node.js Version“.
+================================================================================

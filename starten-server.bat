@@ -15,6 +15,28 @@ echo Dieses Fenster bleibt bei Fehlern offen.
 echo ========================================
 echo.
 
+if not exist "%~dp0package.json" (
+  echo FEHLER: package.json fehlt in diesem Ordner.
+  echo.
+  echo Sie starten die BAT-Datei vermutlich im falschen Verzeichnis.
+  echo Bitte ANLEITUNG-SERVER.txt lesen.
+  echo.
+  echo Aktueller Ordner:
+  echo %CD%
+  echo.
+  goto :END
+)
+
+if not exist "%~dp0scripts\prepare-server.cjs" (
+  echo FEHLER: scripts\prepare-server.cjs fehlt.
+  echo.
+  echo Das ist nicht der aktuelle Schichtwerk-Stand.
+  echo Bitte den Branch-ZIP neu laden und nach C:\Schichtwerk entpacken.
+  echo Siehe ANLEITUNG-SERVER.txt
+  echo.
+  goto :END
+)
+
 where node >nul 2>&1
 if errorlevel 1 (
   echo FEHLER: Node.js wurde nicht gefunden.
@@ -41,26 +63,14 @@ echo npm Version:
 npm -v
 echo.
 
-if not exist "package.json" (
-  echo FEHLER: package.json fehlt.
-  echo Liegt starten-server.bat wirklich im Schichtwerk-Ordner?
-  echo.
-  goto :END
-)
-
-if not exist "scripts\prepare-server.cjs" (
-  echo FEHLER: scripts\prepare-server.cjs fehlt.
-  echo Bitte den neuesten Stand des Projekts herunterladen.
-  echo.
-  goto :END
-)
-
-echo Vorbereitung laeuft ...
-call node scripts\prepare-server.cjs
+echo Vorbereitung laeuft - bitte warten ...
+echo (erster Start kann einige Minuten dauern)
+echo.
+call node "%~dp0scripts\prepare-server.cjs"
 if errorlevel 1 (
   echo.
   echo FEHLER bei der Vorbereitung.
-  echo Scrollen Sie nach oben und lesen Sie die rote/letzte Meldung.
+  echo Scrollen Sie nach oben und lesen Sie die letzte Meldung.
   echo.
   goto :END
 )
