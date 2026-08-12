@@ -17,6 +17,7 @@ type Employee = {
   email: string | null;
   active: boolean;
   maxShifts: number;
+  vacationDaysPerYear: number;
   competencies: { competency: Competency }[];
 };
 
@@ -26,6 +27,7 @@ export default function MitarbeiterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [maxShifts, setMaxShifts] = useState(5);
+  const [vacationDays, setVacationDays] = useState(30);
   const [selected, setSelected] = useState<string[]>([]);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
@@ -56,6 +58,7 @@ export default function MitarbeiterPage() {
     setName(emp.name);
     setEmail(emp.email ?? "");
     setMaxShifts(emp.maxShifts);
+    setVacationDays(emp.vacationDaysPerYear ?? 30);
     setSelected(emp.competencies.map((c) => c.competency.id));
   }
 
@@ -64,6 +67,7 @@ export default function MitarbeiterPage() {
     setName("");
     setEmail("");
     setMaxShifts(5);
+    setVacationDays(30);
     setSelected([]);
   }
 
@@ -73,6 +77,7 @@ export default function MitarbeiterPage() {
       name,
       email: email || null,
       maxShifts,
+      vacationDaysPerYear: vacationDays,
       competencyIds: selected,
       active: true,
     };
@@ -142,6 +147,14 @@ export default function MitarbeiterPage() {
               value={maxShifts}
               onChange={(e) => setMaxShifts(Number(e.target.value))}
             />
+            <Input
+              label="Urlaubstage / Jahr"
+              type="number"
+              min={0}
+              max={60}
+              value={vacationDays}
+              onChange={(e) => setVacationDays(Number(e.target.value))}
+            />
             <div>
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
                 Kompetenzen
@@ -193,6 +206,7 @@ export default function MitarbeiterPage() {
                     </h3>
                     <p className="text-sm text-[var(--muted)]">
                       {emp.email || "Keine E-Mail"} · max. {emp.maxShifts} Schichten
+                      · {emp.vacationDaysPerYear ?? 30} Urlaubstage
                       {!emp.active ? " · inaktiv" : ""}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-1.5">

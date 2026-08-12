@@ -73,6 +73,7 @@ export async function generateSchedule(
     }),
     prisma.absence.findMany({
       where: {
+        status: "APPROVED",
         startDate: { lte: end },
         endDate: { gte: start },
       },
@@ -236,6 +237,7 @@ export async function getSchedule(startDate: string, endDate: string) {
       }),
       prisma.absence.findMany({
         where: {
+          status: { in: ["APPROVED", "PENDING"] },
           startDate: { lte: end },
           endDate: { gte: start },
         },

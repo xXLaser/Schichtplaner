@@ -19,12 +19,13 @@ model Competency {
 }
 
 model Employee {
-  id        String   @id @default(cuid())
-  name      String
-  email     String?
-  active    Boolean  @default(true)
-  maxShifts Int      @default(5)
-  createdAt DateTime @default(now())
+  id                   String   @id @default(cuid())
+  name                 String
+  email                String?
+  active               Boolean  @default(true)
+  maxShifts            Int      @default(5)
+  vacationDaysPerYear  Int      @default(30)
+  createdAt            DateTime @default(now())
 
   competencies EmployeeCompetency[]
   absences     Absence[]
@@ -32,22 +33,23 @@ model Employee {
 }
 
 model EmployeeCompetency {
-  employeeId    String
-  competencyId  String
-  employee      Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  competency    Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+  employeeId   String
+  competencyId String
+  employee     Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  competency   Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
 
   @@id([employeeId, competencyId])
 }
 
 model Absence {
-  id         String      @id @default(cuid())
+  id         String        @id @default(cuid())
   employeeId String
   type       AbsenceType
+  status     AbsenceStatus @default(APPROVED)
   startDate  DateTime
   endDate    DateTime
   note       String?
-  createdAt  DateTime    @default(now())
+  createdAt  DateTime      @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
@@ -56,6 +58,12 @@ enum AbsenceType {
   VACATION
   SICK
   OTHER
+}
+
+enum AbsenceStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 model ShiftTemplate {

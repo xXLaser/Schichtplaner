@@ -7,6 +7,7 @@ const schema = z.object({
   email: z.string().email().optional().nullable().or(z.literal("")),
   active: z.boolean().optional(),
   maxShifts: z.number().int().min(1).max(14).optional(),
+  vacationDaysPerYear: z.number().int().min(0).max(60).optional(),
   competencyIds: z.array(z.string()).optional(),
 });
 
@@ -34,6 +35,7 @@ export async function PATCH(
       email: body.email === "" ? null : body.email,
       active: body.active,
       maxShifts: body.maxShifts,
+      vacationDaysPerYear: body.vacationDaysPerYear,
     },
     include: { competencies: { include: { competency: true } } },
   });

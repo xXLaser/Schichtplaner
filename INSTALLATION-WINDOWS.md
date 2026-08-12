@@ -193,19 +193,26 @@ http://localhost:3000
 
 3. Enter drücken.
 
-Sie sollten jetzt die Oberfläche von **Schichtwerk** sehen (Menü mit Dienstplan, Mitarbeiter, Kompetenzen usw.).
+Sie sollten jetzt die Oberfläche von **Schichtwerk** sehen (Menü mit Dienstplan, Urlaubsplaner, Mitarbeiter usw.).
+
+### Am Handy nutzen
+
+- **Am gleichen PC-Netzwerk:** Wenn Schichtwerk auf dem PC läuft, können Sie im Handy-Browser die IP-Adresse des PCs nutzen (z. B. `http://192.168.1.20:3000`). Die genaue IP finden Sie unter Windows mit `ipconfig` (IPv4-Adresse).
+- **Zum Home-Bildschirm:** Im Handy-Browser das Menü öffnen und „Zum Home-Bildschirm hinzufügen“ / „Add to Home Screen“ wählen – dann starten Sie Schichtwerk wie eine App.
+- Unten am Bildschirm gibt es eine **Mobile-Leiste** (Plan, Urlaub, Krank, Team, Mehr).
 
 ---
 
 ## So bedienen Sie das Programm (Kurzüberblick)
 
 1. **Kompetenzen** – Fähigkeiten anlegen (z. B. Schichtleitung, Maschinenführung)  
-2. **Mitarbeiter** – Personen anlegen und Kompetenzen zuweisen  
+2. **Mitarbeiter** – Personen anlegen, Kompetenzen und **Urlaubstage pro Jahr** zuweisen  
 3. **Schichten** – Früh/Spät/Nacht festlegen und eintragen, **wie viele** je Kompetenz nötig sind  
-4. **Abwesenheiten** – Urlaub und Krankenstand eintragen (der Plan wird dabei neu berechnet)  
-5. **Dienstplan** – Woche auswählen und bei Bedarf **Plan neu generieren**
+4. **Urlaubsplaner** – Urlaub eintragen, Resturlaub sehen, Überschneidungen prüfen, genehmigen  
+5. **Abwesenheiten** – Krankenstand und Sonstiges erfassen  
+6. **Dienstplan** – Woche auswählen und bei Bedarf **Plan neu generieren**
 
-Tipp: Mit den Beispieldaten können Sie sofort im **Dienstplan** auf „Plan neu generieren“ klicken.
+Tipp: Mit den Beispieldaten können Sie sofort im **Dienstplan** auf „Plan neu generieren“ klicken und im **Urlaubsplaner** den Monat ansehen.
 
 ---
 

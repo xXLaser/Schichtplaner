@@ -60,36 +60,37 @@ export default function AbwesenheitenPage() {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    await fetch("/api/absences", {
+    const res = await fetch("/api/absences", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         employeeId,
         type,
+        status: "APPROVED",
         startDate,
         endDate,
         note: note || null,
+        compensate: true,
       }),
     });
-
-    // Automatische Kompensation: betroffenen Zeitraum neu planen
-    const compensate = await fetch("/api/schedule", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        startDate,
-        endDate,
-        replaceExisting: true,
-      }),
-    }).then((r) => r.json());
+    const json = await res.json();
+    if (!res.ok) {
+      setHint(json.error ?? "Speichern fehlgeschlagen");
+      return;
+    }
 
     setNote("");
+    const compensate = json.compensation;
     setHint(
-      `Abwesenheit gespeichert und Plan kompensiert (${compensate.created ?? 0} Zuweisungen` +
-        (compensate.warnings?.length
-          ? `, ${compensate.warnings.length} Kompetenzlücken`
+      `Abwesenheit gespeichert` +
+        (compensate
+          ? ` und Plan kompensiert (${compensate.created ?? 0} Zuweisungen` +
+            (compensate.warnings?.length
+              ? `, ${compensate.warnings.length} Kompetenzlücken`
+              : "") +
+            ")"
           : "") +
-        ").",
+        ". Für Urlaubsplanung mit Kontingent besser den Urlaubsplaner nutzen.",
     );
     await load();
   }
@@ -104,7 +105,7 @@ export default function AbwesenheitenPage() {
     <div className="animate-fade-up">
       <PageHeader
         title="Abwesenheiten"
-        subtitle="Urlaub und Krankenstände erfassen. Beim Neugenerieren des Plans werden fehlende Personen automatisch ersetzt."
+        subtitle="Krankenstände und sonstige Absenzen schnell erfassen. Urlaub mit Resttagen und Kalender: Seite „Urlaubsplaner“."
       />
 
       {hint ? (

@@ -36,6 +36,7 @@ type Assignment = {
 type Absence = {
   id: string;
   type: string;
+  status?: string;
   startDate: string;
   endDate: string;
   employee: { id: string; name: string };
@@ -63,6 +64,7 @@ export default function DienstplanPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [mobileDay, setMobileDay] = useState(() => toISODate(new Date()));
 
   const end = useMemo(() => toISODate(addDays(new Date(week + "T00:00:00"), 6)), [week]);
 
@@ -72,6 +74,10 @@ export default function DienstplanPage() {
       const res = await fetch(`/api/schedule?from=${week}&to=${end}`);
       const json = await res.json();
       setData(json);
+      if (json.days?.length) {
+        const today = toISODate(new Date());
+        setMobileDay(json.days.includes(today) ? today : json.days[0]);
+      }
     } finally {
       setLoading(false);
     }
@@ -109,9 +115,11 @@ export default function DienstplanPage() {
   }
 
   function shiftPeople(day: string, shiftId: string) {
-    return data?.assignments.filter(
-      (a) => a.date === day && a.shiftTemplateId === shiftId,
-    ) ?? [];
+    return (
+      data?.assignments.filter(
+        (a) => a.date === day && a.shiftTemplateId === shiftId,
+      ) ?? []
+    );
   }
 
   function dayAbsences(day: string) {
@@ -124,7 +132,7 @@ export default function DienstplanPage() {
     <div className="animate-fade-up">
       <PageHeader
         title="Dienstplan"
-        subtitle="Automatische Belegung nach Kompetenzen. Abwesenheiten werden bei der Generierung kompensiert."
+        subtitle="Automatische Belegung nach Kompetenzen. Genehmigte Abwesenheiten werden kompensiert."
         actions={
           <>
             <Button
@@ -186,74 +194,188 @@ export default function DienstplanPage() {
       {loading || !data ? (
         <EmptyState text="Dienstplan wird geladen…" />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-[var(--line)] bg-[var(--surface)]">
-          <table className="min-w-[960px] w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-[var(--line)] bg-[var(--surface-2)]/70">
-                <th className="sticky left-0 z-10 bg-[var(--surface-2)] px-3 py-3 text-left font-semibold text-[var(--ink)]">
-                  Schicht
-                </th>
-                {data.days.map((d) => (
-                  <th
-                    key={d}
-                    className="min-w-[140px] px-3 py-3 text-left font-semibold text-[var(--ink)]"
-                  >
-                    {formatDayLabel(d)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.shifts.map((shift) => (
-                <tr key={shift.id} className="border-b border-[var(--line)] align-top">
-                  <td className="sticky left-0 z-10 bg-[var(--surface)] px-3 py-3">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: shift.color }}
-                      />
-                      <div>
-                        <div className="font-semibold">{shift.name}</div>
-                        <div className="text-xs text-[var(--muted)]">
-                          {shift.startTime}–{shift.endTime}
-                        </div>
+        <>
+          {/* Mobile: Tag für Tag */}
+          <div className="space-y-4 lg:hidden">
+            <div className="flex gap-1 overflow-x-auto pb-1">
+              {data.days.map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setMobileDay(d)}
+                  className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium ${
+                    mobileDay === d
+                      ? "bg-[var(--accent)] text-white"
+                      : "bg-[var(--surface)] border border-[var(--line)] text-[var(--ink-soft)]"
+                  }`}
+                >
+                  {formatDayLabel(d)}
+                </button>
+              ))}
+            </div>
+
+            {data.shifts.map((shift) => {
+              const people = shiftPeople(mobileDay, shift.id);
+              return (
+                <Panel key={shift.id}>
+                  <div className="mb-3 flex items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: shift.color }}
+                    />
+                    <div>
+                      <div className="font-semibold">{shift.name}</div>
+                      <div className="text-xs text-[var(--muted)]">
+                        {shift.startTime}–{shift.endTime}
                       </div>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {shift.requirements.map((r) => (
-                        <span
-                          key={r.competencyId}
-                          className="rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--ink-soft)]"
-                          title={`Mindestens ${r.minCount}`}
+                  </div>
+                  {people.length === 0 ? (
+                    <p className="text-sm text-[var(--muted)]">Niemand eingeteilt</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {people.map((p) => (
+                        <li
+                          key={p.id}
+                          className="rounded-lg border border-[var(--line)] bg-white px-3 py-2"
                         >
-                          {r.competency.name} ×{r.minCount}
-                        </span>
+                          <div className="font-medium">{p.employee.name}</div>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {p.employee.competencies.map((c) => (
+                              <Badge key={c.competency.id} color={c.competency.color}>
+                                {c.competency.name}
+                              </Badge>
+                            ))}
+                          </div>
+                        </li>
                       ))}
-                    </div>
+                    </ul>
+                  )}
+                </Panel>
+              );
+            })}
+
+            <Panel className="border-rose-200 bg-[#fff1f2]/70">
+              <h3 className="mb-2 font-semibold text-[var(--danger)]">Abwesend</h3>
+              {dayAbsences(mobileDay).length === 0 ? (
+                <p className="text-sm text-[var(--muted)]">Keine Abwesenheiten</p>
+              ) : (
+                <ul className="space-y-1 text-sm">
+                  {dayAbsences(mobileDay).map((a) => (
+                    <li key={a.id}>
+                      {a.employee.name} · {ABSENCE_LABELS[a.type] ?? a.type}
+                      {a.status === "PENDING" ? " (beantragt)" : ""}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Panel>
+          </div>
+
+          {/* Desktop: Tabelle */}
+          <div className="hidden overflow-x-auto rounded-xl border border-[var(--line)] bg-[var(--surface)] lg:block">
+            <table className="min-w-[960px] w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-[var(--line)] bg-[var(--surface-2)]/70">
+                  <th className="sticky left-0 z-10 bg-[var(--surface-2)] px-3 py-3 text-left font-semibold text-[var(--ink)]">
+                    Schicht
+                  </th>
+                  {data.days.map((d) => (
+                    <th
+                      key={d}
+                      className="min-w-[140px] px-3 py-3 text-left font-semibold text-[var(--ink)]"
+                    >
+                      {formatDayLabel(d)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.shifts.map((shift) => (
+                  <tr key={shift.id} className="border-b border-[var(--line)] align-top">
+                    <td className="sticky left-0 z-10 bg-[var(--surface)] px-3 py-3">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: shift.color }}
+                        />
+                        <div>
+                          <div className="font-semibold">{shift.name}</div>
+                          <div className="text-xs text-[var(--muted)]">
+                            {shift.startTime}–{shift.endTime}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {shift.requirements.map((r) => (
+                          <span
+                            key={r.competencyId}
+                            className="rounded bg-[var(--surface-2)] px-1.5 py-0.5 text-[10px] text-[var(--ink-soft)]"
+                            title={`Mindestens ${r.minCount}`}
+                          >
+                            {r.competency.name} ×{r.minCount}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    {data.days.map((day) => {
+                      const people = shiftPeople(day, shift.id);
+                      return (
+                        <td key={day} className="px-2 py-2">
+                          {people.length === 0 ? (
+                            <span className="text-xs text-[var(--muted)]">—</span>
+                          ) : (
+                            <ul className="space-y-1.5">
+                              {people.map((p) => (
+                                <li
+                                  key={p.id}
+                                  className="rounded-md border border-[var(--line)] bg-white px-2 py-1.5"
+                                >
+                                  <div className="font-medium text-[var(--ink)]">
+                                    {p.employee.name}
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {p.employee.competencies.slice(0, 3).map((c) => (
+                                      <Badge
+                                        key={c.competency.id}
+                                        color={c.competency.color}
+                                      >
+                                        {c.competency.name}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+                <tr className="bg-[#fff1f2]/60 align-top">
+                  <td className="sticky left-0 z-10 bg-[#fff1f2] px-3 py-3 font-semibold text-[var(--danger)]">
+                    Abwesend
                   </td>
                   {data.days.map((day) => {
-                    const people = shiftPeople(day, shift.id);
+                    const abs = dayAbsences(day);
                     return (
                       <td key={day} className="px-2 py-2">
-                        {people.length === 0 ? (
+                        {abs.length === 0 ? (
                           <span className="text-xs text-[var(--muted)]">—</span>
                         ) : (
-                          <ul className="space-y-1.5">
-                            {people.map((p) => (
+                          <ul className="space-y-1">
+                            {abs.map((a) => (
                               <li
-                                key={p.id}
-                                className="rounded-md border border-[var(--line)] bg-white px-2 py-1.5"
+                                key={a.id}
+                                className="rounded-md border border-rose-200 bg-white px-2 py-1 text-xs"
                               >
-                                <div className="font-medium text-[var(--ink)]">
-                                  {p.employee.name}
-                                </div>
-                                <div className="mt-1 flex flex-wrap gap-1">
-                                  {p.employee.competencies.slice(0, 3).map((c) => (
-                                    <Badge key={c.competency.id} color={c.competency.color}>
-                                      {c.competency.name}
-                                    </Badge>
-                                  ))}
-                                </div>
+                                <span className="font-medium">{a.employee.name}</span>
+                                <span className="text-[var(--muted)]">
+                                  {" "}
+                                  · {ABSENCE_LABELS[a.type] ?? a.type}
+                                  {a.status === "PENDING" ? " (beantragt)" : ""}
+                                </span>
                               </li>
                             ))}
                           </ul>
@@ -262,40 +384,10 @@ export default function DienstplanPage() {
                     );
                   })}
                 </tr>
-              ))}
-              <tr className="bg-[#fff1f2]/60 align-top">
-                <td className="sticky left-0 z-10 bg-[#fff1f2] px-3 py-3 font-semibold text-[var(--danger)]">
-                  Abwesend
-                </td>
-                {data.days.map((day) => {
-                  const abs = dayAbsences(day);
-                  return (
-                    <td key={day} className="px-2 py-2">
-                      {abs.length === 0 ? (
-                        <span className="text-xs text-[var(--muted)]">—</span>
-                      ) : (
-                        <ul className="space-y-1">
-                          {abs.map((a) => (
-                            <li
-                              key={a.id}
-                              className="rounded-md border border-rose-200 bg-white px-2 py-1 text-xs"
-                            >
-                              <span className="font-medium">{a.employee.name}</span>
-                              <span className="text-[var(--muted)]">
-                                {" "}
-                                · {ABSENCE_LABELS[a.type] ?? a.type}
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

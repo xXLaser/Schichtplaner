@@ -236,6 +236,7 @@ async function main() {
     data: {
       employeeId: employees[0].id,
       type: AbsenceType.VACATION,
+      status: "APPROVED",
       startDate: nextMonday,
       endDate: new Date(nextMonday.getTime() + 4 * 24 * 60 * 60 * 1000),
       note: "Sommerurlaub",
@@ -246,9 +247,22 @@ async function main() {
     data: {
       employeeId: employees[3].id,
       type: AbsenceType.SICK,
+      status: "APPROVED",
       startDate: nextMonday,
       endDate: new Date(nextMonday.getTime() + 1 * 24 * 60 * 60 * 1000),
       note: "Erkältung",
+    },
+  });
+
+  // Extra pending vacation for planner demo
+  await prisma.absence.create({
+    data: {
+      employeeId: employees[2].id,
+      type: AbsenceType.VACATION,
+      status: "PENDING",
+      startDate: new Date(nextMonday.getTime() + 14 * 24 * 60 * 60 * 1000),
+      endDate: new Date(nextMonday.getTime() + 18 * 24 * 60 * 60 * 1000),
+      note: "Familienurlaub (Antrag)",
     },
   });
 
