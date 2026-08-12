@@ -1,76 +1,71 @@
 ================================================================================
-SCHICHTWERK – WENN DER SERVER NICHT STARTET (Windows)
+WICHTIG – IHR SCREENSHOT ZEIGT DAS FALSCHE / UNVOLLSTÄNDIGE PROJEKT
 ================================================================================
 
-Was Ihr Screenshot zeigt
-------------------------
-1) Der Ordner ist viel zu verschachtelt, z. B.:
+Im Fenster steht:
+  „Arbeitsplan - Windows Server Start“
 
-   C:\Users\Administrator\Downloads\Schichtplaner-main\...\Web2.0\...
+Unser aktuelles Skript zeigt IMMER:
+  „SCHICHTWERK - 00-START“
+  oder „Schichtwerk - Windows Server Start“
 
-   Das ist fast immer ein mehrfach entpacktes ZIP – dort fehlen oft Dateien
-   oder es liegt eine alte/falsche starten-*.bat.
-
-2) Der Text „Schichtplaner - Window Server Start“ ist NICHT unser aktuelles
-   Startskript. Unser Skript heißt:
-
-   „Schichtwerk - Windows Server Start“
-
-   Wenn Sie etwas anderes sehen, starten Sie die falsche Datei.
+Wenn „Arbeitsplan…“ erscheint, wird eine andere/alte BAT ausgeführt
+oder der Ordner C:\Arbeitsplan enthält nicht den Schichtwerk-Code.
 
 
-Richtige Neuinstallation (empfohlen)
-------------------------------------
-1. Alten Download-Ordner ignorieren (nicht weiter darin arbeiten).
+Was im Explorer in C:\Arbeitsplan sichtbar war
+----------------------------------------------
+Nur u.a.:
+  node_modules
+  public
+  sources
+  starten-server-fenster-offen.bat
+  installieren.bat
 
-2. Diesen ZIP herunterladen (aktueller Stand mit Server-Skripten):
+Das reicht NICHT. Es fehlen typischerweise:
+  package.json
+  src
+  prisma
+  scripts
+  00-START.bat
 
+
+Bitte so neu aufsetzen (genau so)
+---------------------------------
+1) Alten Ordner C:\Arbeitsplan umbenennen, z.B. in C:\Arbeitsplan-ALT
+   (nicht löschen, falls Sie Dateien behalten wollen)
+
+2) Diesen ZIP herunterladen:
    https://github.com/xXLaser/Schichtplaner/archive/refs/heads/cursor/schichtplaner-tool-94b2.zip
 
-3. ZIP nach genau diesem Ort entpacken:
+3) ZIP entpacken. Es entsteht z.B. ein Ordner:
+   Schichtplaner-cursor-schichtplaner-tool-94b2
 
-   C:\Schichtwerk
+4) Den INHALT dieses Ordners nach C:\Schichtwerk kopieren
+   (oder den Ordner selbst nach C:\Schichtwerk umbenennen/verschieben)
 
-   Wichtig:
-   - nicht in Downloads liegen lassen
-   - nicht mehrfach in sich selbst entpacken
-   - In C:\Schichtwerk muss DIREKT die Datei package.json liegen
+5) Im Explorer C:\Schichtwerk öffnen. Sie MÜSSEN sehen:
+   - 00-START.bat
+   - package.json
+   - src          (nicht „sources“)
+   - prisma
+   - scripts
+   - public
+   - starten-server.bat
+   - PRUEFEN.bat
 
-   Richtig:
-   C:\Schichtwerk\package.json
-   C:\Schichtwerk\starten-server.bat
-   C:\Schichtwerk\PRUEFEN.bat
-   C:\Schichtwerk\scripts\prepare-server.cjs
+6) Doppelklick auf:
+   C:\Schichtwerk\00-START.bat
 
-   Falsch:
-   C:\Schichtwerk\Schichtplaner-xxx\Web2.0\...\package.json
+7) Im schwarzen Fenster muss ganz oben stehen:
+   SCHICHTWERK - 00-START
 
-4. Doppelklick auf:
-
-   C:\Schichtwerk\PRUEFEN.bat
-
-   Dort muss überall [OK] stehen.
-
-5. Dann Doppelklick auf:
-
-   C:\Schichtwerk\starten-server-fenster-offen.bat
-
-6. Warten bis „Server startet jetzt…“ erscheint (erster Build kann
-   mehrere Minuten dauern – Fenster offen lassen!).
-
-7. Im Browser testen:
-
+8) Warten (erster Build kann 2–5 Minuten dauern). Danach testen:
    http://localhost:3000/api/health
-   http://SERVER-IP:3000/api/health
 
 
-Firewall
---------
-Port 3000 TCP eingehend freigeben (nicht nur „Node.js“).
-
-
-Wenn wieder nichts passiert
----------------------------
-Den kompletten Text aus dem schwarzen Fenster kopieren oder per
-Screenshot schicken – besonders alles NACH „Node.js Version“.
+Falls wieder „Arbeitsplan…“ erscheint
+-------------------------------------
+Dann wurde erneut die alte BAT aus C:\Arbeitsplan gestartet.
+Bitte wirklich C:\Schichtwerk\00-START.bat verwenden.
 ================================================================================

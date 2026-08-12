@@ -8,15 +8,24 @@ Web-App zum Erstellen von Dienstplänen mit:
 - **Krankenstand & Abwesenheiten** – erfassen und automatisch kompensieren
 - **Mobile Nutzung** – Bottom-Navigation, Tag-Ansicht, als App auf dem Homescreen speicherbar
 
-## Installation unter Windows (empfohlen)
+## Windows-Server (wichtig)
 
-Für eine **vollständige, leicht verständliche Anleitung** (auch ohne Technikkenntnisse):
+Wenn das Startfenster **„Arbeitsplan…“** zeigt und nach Node/npm nichts passiert:  
+Sie sind im **falschen/unvollständigen Ordner**.
+
+1. Neu laden: [Branch-ZIP](https://github.com/xXLaser/Schichtplaner/archive/refs/heads/cursor/schichtplaner-tool-94b2.zip)
+2. Nach `C:\Schichtwerk` entpacken (`package.json` und `src` müssen direkt dort liegen)
+3. **`00-START.bat`** ausführen (Titel muss „SCHICHTWERK - 00-START“ zeigen)
+
+Details: [`ANLEITUNG-SERVER.txt`](ANLEITUNG-SERVER.txt) · [`INSTALLATION-WINDOWS.md`](INSTALLATION-WINDOWS.md)
+
+## Installation unter Windows (empfohlen)
 
 **→ [INSTALLATION-WINDOWS.md](INSTALLATION-WINDOWS.md)**
 
 Kurzfassung nach der Ersteinrichtung:
 
-1. Doppelklick auf `starten.bat`
+1. Doppelklick auf `starten.bat` oder `00-START.bat`
 2. Browser öffnen: [http://localhost:3000](http://localhost:3000)
 
 ### Handy / Tablet
