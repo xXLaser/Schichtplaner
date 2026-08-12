@@ -28,6 +28,12 @@ const schema = z.object({
   maxShifts: z.number().int().min(1).max(14).optional(),
   vacationDaysPerYear: z.number().int().min(0).max(60).optional(),
   competencyIds: z.array(z.string()).optional(),
+  shiftPreference: z.enum(["ANY", "DAY_ONLY", "NIGHT_ONLY", "ROTATING"]).optional(),
+  rotationWeeks: z.number().int().min(1).max(12).optional(),
+  rotationStartDate: z.string().optional().nullable(),
+  rotationStartKind: z.enum(["DAY", "NIGHT"]).optional(),
+  targetHours: z.number().min(0).max(1000).optional().nullable(),
+  hoursPeriod: z.enum(["MONTH", "QUARTER"]).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -40,6 +46,14 @@ export async function POST(req: NextRequest) {
         active: body.active ?? true,
         maxShifts: body.maxShifts ?? 5,
         vacationDaysPerYear: body.vacationDaysPerYear ?? 30,
+        shiftPreference: body.shiftPreference ?? "ANY",
+        rotationWeeks: body.rotationWeeks ?? 1,
+        rotationStartDate: body.rotationStartDate
+          ? new Date(body.rotationStartDate)
+          : null,
+        rotationStartKind: body.rotationStartKind ?? "DAY",
+        targetHours: body.targetHours ?? null,
+        hoursPeriod: body.hoursPeriod ?? "MONTH",
         competencies: body.competencyIds
           ? {
               create: body.competencyIds.map((competencyId) => ({

@@ -6,13 +6,19 @@ import {
   Panel,
   Button,
   Input,
+  Select,
   Badge,
   EmptyState,
   ErrorBanner,
 } from "@/components/ui";
 import { apiGet, apiSend } from "@/lib/api";
+import { toISODate } from "@/lib/dates";
 
 type Competency = { id: string; name: string; color: string };
+type ShiftPreference = "ANY" | "DAY_ONLY" | "NIGHT_ONLY" | "ROTATING";
+type ShiftKind = "DAY" | "NIGHT";
+type HoursPeriod = "MONTH" | "QUARTER";
+
 type Employee = {
   id: string;
   name: string;
@@ -20,7 +26,20 @@ type Employee = {
   active: boolean;
   maxShifts: number;
   vacationDaysPerYear: number;
+  shiftPreference: ShiftPreference;
+  rotationWeeks: number;
+  rotationStartDate: string | null;
+  rotationStartKind: ShiftKind;
+  targetHours: number | null;
+  hoursPeriod: HoursPeriod;
   competencies: { competency: Competency }[];
+};
+
+const PREFERENCE_LABELS: Record<ShiftPreference, string> = {
+  ANY: "Egal (Tag & Nacht)",
+  DAY_ONLY: "Nur Tagschicht",
+  NIGHT_ONLY: "Nur Nachtschicht",
+  ROTATING: "Wechseldienst",
 };
 
 export default function MitarbeiterPage() {
@@ -31,6 +50,14 @@ export default function MitarbeiterPage() {
   const [maxShifts, setMaxShifts] = useState(5);
   const [vacationDays, setVacationDays] = useState(30);
   const [selected, setSelected] = useState<string[]>([]);
+  const [shiftPreference, setShiftPreference] = useState<ShiftPreference>("ANY");
+  const [rotationWeeks, setRotationWeeks] = useState(1);
+  const [rotationStartDate, setRotationStartDate] = useState(() =>
+    toISODate(new Date()),
+  );
+  const [rotationStartKind, setRotationStartKind] = useState<ShiftKind>("DAY");
+  const [targetHours, setTargetHours] = useState<string>("");
+  const [hoursPeriod, setHoursPeriod] = useState<HoursPeriod>("MONTH");
   const [editing, setEditing] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +103,12 @@ export default function MitarbeiterPage() {
     setMaxShifts(emp.maxShifts);
     setVacationDays(emp.vacationDaysPerYear ?? 30);
     setSelected(emp.competencies.map((c) => c.competency.id));
+    setShiftPreference(emp.shiftPreference ?? "ANY");
+    setRotationWeeks(emp.rotationWeeks ?? 1);
+    setRotationStartDate(emp.rotationStartDate?.slice(0, 10) ?? toISODate(new Date()));
+    setRotationStartKind(emp.rotationStartKind ?? "DAY");
+    setTargetHours(emp.targetHours != null ? String(emp.targetHours) : "");
+    setHoursPeriod(emp.hoursPeriod ?? "MONTH");
   }
 
   function resetForm() {
@@ -85,6 +118,12 @@ export default function MitarbeiterPage() {
     setMaxShifts(5);
     setVacationDays(30);
     setSelected([]);
+    setShiftPreference("ANY");
+    setRotationWeeks(1);
+    setRotationStartDate(toISODate(new Date()));
+    setRotationStartKind("DAY");
+    setTargetHours("");
+    setHoursPeriod("MONTH");
   }
 
   async function onSubmit(e: FormEvent) {
@@ -96,6 +135,12 @@ export default function MitarbeiterPage() {
       vacationDaysPerYear: vacationDays,
       competencyIds: selected,
       active: true,
+      shiftPreference,
+      rotationWeeks,
+      rotationStartDate: shiftPreference === "ROTATING" ? rotationStartDate : null,
+      rotationStartKind,
+      targetHours: targetHours === "" ? null : Number(targetHours),
+      hoursPeriod,
     };
 
     try {
@@ -132,16 +177,24 @@ export default function MitarbeiterPage() {
     }
   }
 
+  function preferenceSummary(emp: Employee): string {
+    if (emp.shiftPreference === "ROTATING") {
+      const startLabel = emp.rotationStartKind === "NIGHT" ? "Nacht" : "Tag";
+      return `Wechseldienst (${emp.rotationWeeks} Woche${emp.rotationWeeks > 1 ? "n" : ""} ${startLabel}/…)`;
+    }
+    return PREFERENCE_LABELS[emp.shiftPreference] ?? "Egal";
+  }
+
   return (
     <div className="animate-fade-up">
       <PageHeader
         title="Mitarbeiter"
-        subtitle="Kompetenzen pro Person hinterlegen – der Planer setzt nur passende Leute ein."
+        subtitle="Kompetenzen, Schichtpräferenz und Sollstunden hinterlegen – der Planer berücksichtigt alles automatisch."
       />
 
       {error ? <ErrorBanner message={error} onRetry={() => void load()} /> : null}
 
-      <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
+      <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
         <Panel>
           <h2 className="mb-4 font-[family-name:var(--font-display)] text-lg">
             {editing ? "Bearbeiten" : "Neu anlegen"}
@@ -175,6 +228,87 @@ export default function MitarbeiterPage() {
               value={vacationDays}
               onChange={(e) => setVacationDays(Number(e.target.value))}
             />
+
+            <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 space-y-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
+                Schichtpräferenz
+              </p>
+              <Select
+                label="Präferenz"
+                value={shiftPreference}
+                onChange={(e) =>
+                  setShiftPreference(e.target.value as ShiftPreference)
+                }
+              >
+                <option value="ANY">Egal (Tag &amp; Nacht)</option>
+                <option value="DAY_ONLY">Nur Tagschicht</option>
+                <option value="NIGHT_ONLY">Nur Nachtschicht</option>
+                <option value="ROTATING">Wechseldienst</option>
+              </Select>
+
+              {shiftPreference === "ROTATING" ? (
+                <>
+                  <Input
+                    label="Rhythmus (Wochen pro Phase)"
+                    type="number"
+                    min={1}
+                    max={12}
+                    value={rotationWeeks}
+                    onChange={(e) => setRotationWeeks(Number(e.target.value))}
+                  />
+                  <Select
+                    label="Beginnt mit"
+                    value={rotationStartKind}
+                    onChange={(e) =>
+                      setRotationStartKind(e.target.value as ShiftKind)
+                    }
+                  >
+                    <option value="DAY">Tag</option>
+                    <option value="NIGHT">Nacht</option>
+                  </Select>
+                  <Input
+                    label="Ab wann (Referenzdatum)"
+                    type="date"
+                    value={rotationStartDate}
+                    onChange={(e) => setRotationStartDate(e.target.value)}
+                  />
+                  <p className="text-xs text-[var(--muted)]">
+                    z. B. 1 Woche = wöchentlicher Wechsel Tag/Nacht, 2 Wochen =
+                    zwei Wochen Tag, dann zwei Wochen Nacht usw.
+                  </p>
+                </>
+              ) : null}
+            </div>
+
+            <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3 space-y-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
+                Sollstunden
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label="Stunden-Ziel"
+                  type="number"
+                  min={0}
+                  step="0.5"
+                  placeholder="z. B. 160"
+                  value={targetHours}
+                  onChange={(e) => setTargetHours(e.target.value)}
+                />
+                <Select
+                  label="Zeitraum"
+                  value={hoursPeriod}
+                  onChange={(e) => setHoursPeriod(e.target.value as HoursPeriod)}
+                >
+                  <option value="MONTH">pro Monat</option>
+                  <option value="QUARTER">pro Quartal</option>
+                </Select>
+              </div>
+              <p className="text-xs text-[var(--muted)]">
+                Leer lassen, wenn Stunden keine Rolle spielen sollen (dann zählt
+                „Max. Schichten“).
+              </p>
+            </div>
+
             <div>
               <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
                 Kompetenzen
@@ -228,6 +362,12 @@ export default function MitarbeiterPage() {
                       {emp.email || "Keine E-Mail"} · max. {emp.maxShifts} Schichten
                       · {emp.vacationDaysPerYear ?? 30} Urlaubstage
                       {!emp.active ? " · inaktiv" : ""}
+                    </p>
+                    <p className="mt-1 text-sm text-[var(--ink-soft)]">
+                      {preferenceSummary(emp)}
+                      {emp.targetHours != null
+                        ? ` · Ziel: ${emp.targetHours} Std./${emp.hoursPeriod === "QUARTER" ? "Quartal" : "Monat"}`
+                        : ""}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {emp.competencies.length === 0 ? (

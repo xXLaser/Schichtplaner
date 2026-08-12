@@ -31,12 +31,19 @@ async function main() {
 
   const [leitung, maschine, qs, logistik, ersteHilfe] = comps;
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
   const employees = await Promise.all([
+    // Nur Tagschicht
     prisma.employee.create({
       data: {
         name: "Anna Berger",
         email: "anna.berger@beispiel.de",
         maxShifts: 10,
+        shiftPreference: "DAY_ONLY",
+        targetHours: 160,
+        hoursPeriod: "MONTH",
         competencies: {
           create: [
             { competencyId: leitung.id },
@@ -46,11 +53,18 @@ async function main() {
         },
       },
     }),
+    // Wechseldienst: 1 Woche Nacht, 1 Woche Tag
     prisma.employee.create({
       data: {
         name: "Markus Hofmann",
         email: "markus.hofmann@beispiel.de",
         maxShifts: 12,
+        shiftPreference: "ROTATING",
+        rotationWeeks: 1,
+        rotationStartDate: today,
+        rotationStartKind: "NIGHT",
+        targetHours: 160,
+        hoursPeriod: "MONTH",
         competencies: {
           create: [
             { competencyId: maschine.id },
@@ -64,6 +78,9 @@ async function main() {
         name: "Sara Klein",
         email: "sara.klein@beispiel.de",
         maxShifts: 10,
+        shiftPreference: "DAY_ONLY",
+        targetHours: 480,
+        hoursPeriod: "QUARTER",
         competencies: {
           create: [
             { competencyId: leitung.id },
@@ -73,11 +90,15 @@ async function main() {
         },
       },
     }),
+    // Nur Nachtschicht
     prisma.employee.create({
       data: {
         name: "Tom Weber",
         email: "tom.weber@beispiel.de",
         maxShifts: 12,
+        shiftPreference: "NIGHT_ONLY",
+        targetHours: 160,
+        hoursPeriod: "MONTH",
         competencies: {
           create: [
             { competencyId: logistik.id },
@@ -91,6 +112,9 @@ async function main() {
         name: "Lea Fischer",
         email: "lea.fischer@beispiel.de",
         maxShifts: 10,
+        shiftPreference: "DAY_ONLY",
+        targetHours: 130,
+        hoursPeriod: "MONTH",
         competencies: {
           create: [
             { competencyId: qs.id },
@@ -100,11 +124,18 @@ async function main() {
         },
       },
     }),
+    // Wechseldienst: 2 Wochen Tag, 2 Wochen Nacht
     prisma.employee.create({
       data: {
         name: "Jonas Richter",
         email: "jonas.richter@beispiel.de",
         maxShifts: 12,
+        shiftPreference: "ROTATING",
+        rotationWeeks: 2,
+        rotationStartDate: today,
+        rotationStartKind: "DAY",
+        targetHours: 160,
+        hoursPeriod: "MONTH",
         competencies: {
           create: [
             { competencyId: maschine.id },
@@ -118,6 +149,9 @@ async function main() {
         name: "Nina Schulz",
         email: "nina.schulz@beispiel.de",
         maxShifts: 10,
+        shiftPreference: "NIGHT_ONLY",
+        targetHours: 160,
+        hoursPeriod: "MONTH",
         competencies: {
           create: [
             { competencyId: logistik.id },
@@ -131,6 +165,9 @@ async function main() {
         name: "Paul Wagner",
         email: "paul.wagner@beispiel.de",
         maxShifts: 12,
+        shiftPreference: "ANY",
+        targetHours: 160,
+        hoursPeriod: "MONTH",
         competencies: {
           create: [
             { competencyId: qs.id },
@@ -145,6 +182,9 @@ async function main() {
         name: "Elena Vogt",
         email: "elena.vogt@beispiel.de",
         maxShifts: 10,
+        shiftPreference: "DAY_ONLY",
+        targetHours: 480,
+        hoursPeriod: "QUARTER",
         competencies: {
           create: [
             { competencyId: leitung.id },
@@ -159,6 +199,9 @@ async function main() {
         name: "Felix Braun",
         email: "felix.braun@beispiel.de",
         maxShifts: 12,
+        shiftPreference: "NIGHT_ONLY",
+        targetHours: 160,
+        hoursPeriod: "MONTH",
         competencies: {
           create: [
             { competencyId: maschine.id },
@@ -177,6 +220,7 @@ async function main() {
       endTime: "14:00",
       color: "#0f766e",
       sortOrder: 1,
+      kind: "DAY",
       requirements: {
         create: [
           { competencyId: leitung.id, minCount: 1 },
@@ -196,6 +240,7 @@ async function main() {
       endTime: "22:00",
       color: "#0369a1",
       sortOrder: 2,
+      kind: "DAY",
       requirements: {
         create: [
           { competencyId: leitung.id, minCount: 1 },
@@ -215,6 +260,7 @@ async function main() {
       endTime: "06:00",
       color: "#334155",
       sortOrder: 3,
+      kind: "NIGHT",
       requirements: {
         create: [
           { competencyId: leitung.id, minCount: 1 },
@@ -227,8 +273,6 @@ async function main() {
   });
 
   // Sample absences next week
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
   const nextMonday = new Date(today);
   nextMonday.setDate(today.getDate() + ((1 + 7 - today.getDay()) % 7 || 7));
 

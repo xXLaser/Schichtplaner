@@ -7,6 +7,13 @@ import {
   startOfDay,
 } from "date-fns";
 import { prisma } from "./prisma";
+import {
+  allowedShiftKind,
+  periodBounds,
+  periodKeyFor,
+  shiftDurationHours,
+  type ShiftKind,
+} from "./shiftHours";
 
 export type ScheduleWarning = {
   date: string;
@@ -28,6 +35,12 @@ type EmployeeWithSkills = {
   name: string;
   maxShifts: number;
   competencyIds: Set<string>;
+  shiftPreference: "ANY" | "DAY_ONLY" | "NIGHT_ONLY" | "ROTATING";
+  rotationWeeks: number;
+  rotationStartDate: Date | null;
+  rotationStartKind: ShiftKind;
+  targetHours: number | null;
+  hoursPeriod: "MONTH" | "QUARTER";
 };
 
 function dayKey(d: Date): string {
@@ -51,10 +64,61 @@ function isAbsentOnDay(
 }
 
 /**
+ * Lädt und cached für jeden Mitarbeiter die bereits geleisteten Stunden in
+ * seiner aktuellen Abrechnungsperiode (Monat oder Quartal), damit die
+ * Zuteilung neuer Schichten die Sollstunden ausgleichen kann.
+ */
+class HoursTracker {
+  private cache = new Map<string, number>();
+
+  constructor(private pool: EmployeeWithSkills[]) {}
+
+  private cacheKey(employeeId: string, periodKey: string): string {
+    return `${employeeId}|${periodKey}`;
+  }
+
+  async hoursSoFar(employee: EmployeeWithSkills, day: Date): Promise<number> {
+    const periodKey = periodKeyFor(day, employee.hoursPeriod);
+    const key = this.cacheKey(employee.id, periodKey);
+    if (this.cache.has(key)) return this.cache.get(key)!;
+
+    const { start, end } = periodBounds(day, employee.hoursPeriod);
+    const assignments = await prisma.assignment.findMany({
+      where: {
+        employeeId: employee.id,
+        date: { gte: start, lte: addDays(end, 1) },
+      },
+      include: { shiftTemplate: true },
+    });
+    const hours = assignments.reduce(
+      (sum, a) =>
+        sum + shiftDurationHours(a.shiftTemplate.startTime, a.shiftTemplate.endTime),
+      0,
+    );
+    this.cache.set(key, hours);
+    return hours;
+  }
+
+  addHours(employee: EmployeeWithSkills, day: Date, hours: number) {
+    const periodKey = periodKeyFor(day, employee.hoursPeriod);
+    const key = this.cacheKey(employee.id, periodKey);
+    this.cache.set(key, (this.cache.get(key) ?? 0) + hours);
+  }
+
+  /** Nur für bereits vorab geladene (siehe hoursSoFar) Werte gedacht. */
+  getCached(employee: EmployeeWithSkills, day: Date): number {
+    const periodKey = periodKeyFor(day, employee.hoursPeriod);
+    return this.cache.get(this.cacheKey(employee.id, periodKey)) ?? 0;
+  }
+}
+
+/**
  * Erstellt einen Dienstplan für den Zeitraum.
- * Berücksichtigt Abwesenheiten (Urlaub/Krankenstand) und stellt sicher,
- * dass die konfigurierten Mindestanzahlen je Kompetenz pro Schicht erfüllt sind.
- * Bei Neugenerierung werden bestehende Zuweisungen im Zeitraum ersetzt (Kompensation).
+ * Berücksichtigt Abwesenheiten (Urlaub/Krankenstand), Schichtpräferenzen
+ * (nur Tag / nur Nacht / Wechseldienst) und gleicht die Zuteilung so aus,
+ * dass jeder möglichst nah an seine Soll-Stunden (Monat/Quartal) kommt.
+ * Bei Neugenerierung werden bestehende Zuweisungen im Zeitraum ersetzt
+ * (automatische Kompensation von Abwesenheiten).
  */
 export async function generateSchedule(
   startDate: string,
@@ -90,6 +154,12 @@ export async function generateSchedule(
     name: e.name,
     maxShifts: e.maxShifts,
     competencyIds: new Set(e.competencies.map((c) => c.competencyId)),
+    shiftPreference: e.shiftPreference,
+    rotationWeeks: e.rotationWeeks,
+    rotationStartDate: e.rotationStartDate,
+    rotationStartKind: e.rotationStartKind,
+    targetHours: e.targetHours,
+    hoursPeriod: e.hoursPeriod,
   }));
 
   if (replaceExisting) {
@@ -106,6 +176,14 @@ export async function generateSchedule(
   const assignmentCount = new Map<string, number>();
   for (const e of pool) assignmentCount.set(e.id, 0);
 
+  const hoursTracker = new HoursTracker(pool);
+  // Vorab laden, damit die erste Sortierung schon die Stundenbilanz kennt.
+  for (const day of days) {
+    for (const e of pool) {
+      await hoursTracker.hoursSoFar(e, day);
+    }
+  }
+
   const toCreate: {
     date: Date;
     shiftTemplateId: string;
@@ -115,6 +193,15 @@ export async function generateSchedule(
 
   const warnings: ScheduleWarning[] = [];
 
+  /** 0..1: wie stark die Quote (Stunden- oder Schichtziel) bereits ausgefüllt ist. */
+  function fractionFilled(e: EmployeeWithSkills, day: Date): number {
+    if (e.targetHours && e.targetHours > 0) {
+      // hoursSoFar wurde bereits vorab in den Cache geladen (siehe oben).
+      return hoursTracker.getCached(e, day) / e.targetHours;
+    }
+    return (assignmentCount.get(e.id) ?? 0) / Math.max(1, e.maxShifts);
+  }
+
   for (const day of days) {
     // Track who already works any shift this day (max 1 shift/day)
     const busyToday = new Set<string>();
@@ -122,18 +209,25 @@ export async function generateSchedule(
     for (const shift of shifts) {
       const assignedThisShift = new Set<string>();
 
+      const matchesPreference = (e: EmployeeWithSkills) => {
+        const allowed = allowedShiftKind(e, day);
+        return allowed === null || allowed === shift.kind;
+      };
+
       // Sort requirements by scarcity (fewest qualified available first)
       const reqs = [...shift.requirements].sort((a, b) => {
         const availA = pool.filter(
           (e) =>
             e.competencyIds.has(a.competencyId) &&
             !busyToday.has(e.id) &&
+            matchesPreference(e) &&
             !isAbsentOnDay(absences, e.id, day),
         ).length;
         const availB = pool.filter(
           (e) =>
             e.competencyIds.has(b.competencyId) &&
             !busyToday.has(e.id) &&
+            matchesPreference(e) &&
             !isAbsentOnDay(absences, e.id, day),
         ).length;
         return availA - availB;
@@ -153,11 +247,12 @@ export async function generateSchedule(
         }
 
         while (filled < req.minCount) {
-          // Soft limit first (maxShifts), then allow overflow to avoid empty shifts
+          // Praeferenz/Rotation ist eine harte Bedingung (nicht verhandelbar).
           const baseFilter = (e: EmployeeWithSkills) =>
             e.competencyIds.has(req.competencyId) &&
             !busyToday.has(e.id) &&
             !assignedThisShift.has(e.id) &&
+            matchesPreference(e) &&
             !isAbsentOnDay(absences, e.id, day);
 
           let candidates = pool
@@ -166,20 +261,18 @@ export async function generateSchedule(
                 baseFilter(e) && (assignmentCount.get(e.id) ?? 0) < e.maxShifts,
             )
             .sort((a, b) => {
-              const ca = assignmentCount.get(a.id) ?? 0;
-              const cb = assignmentCount.get(b.id) ?? 0;
-              if (ca !== cb) return ca - cb;
+              const fa = fractionFilled(a, day);
+              const fb = fractionFilled(b, day);
+              if (fa !== fb) return fa - fb;
               return a.competencyIds.size - b.competencyIds.size;
             });
 
           if (candidates.length === 0) {
+            // Niemand mehr unter dem weichen Schicht-Limit -> Limit lockern,
+            // damit die Schicht nicht unbesetzt bleibt.
             candidates = pool
               .filter(baseFilter)
-              .sort(
-                (a, b) =>
-                  (assignmentCount.get(a.id) ?? 0) -
-                  (assignmentCount.get(b.id) ?? 0),
-              );
+              .sort((a, b) => fractionFilled(a, day) - fractionFilled(b, day));
           }
 
           if (candidates.length === 0) break;
@@ -188,6 +281,11 @@ export async function generateSchedule(
           assignedThisShift.add(pick.id);
           busyToday.add(pick.id);
           assignmentCount.set(pick.id, (assignmentCount.get(pick.id) ?? 0) + 1);
+          hoursTracker.addHours(
+            pick,
+            day,
+            shiftDurationHours(shift.startTime, shift.endTime),
+          );
           toCreate.push({
             date: day,
             shiftTemplateId: shift.id,

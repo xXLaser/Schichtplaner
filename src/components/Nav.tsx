@@ -14,6 +14,7 @@ const primaryLinks = [
 const moreLinks = [
   { href: "/kompetenzen", label: "Kompetenzen" },
   { href: "/schichten", label: "Schichten" },
+  { href: "/stunden", label: "Stunden" },
 ];
 
 export function Nav() {
@@ -33,6 +34,7 @@ export function Nav() {
     { href: "/kompetenzen", label: "Kompetenzen" },
     { href: "/schichten", label: "Schichten" },
     { href: "/abwesenheiten", label: "Abwesenheiten" },
+    { href: "/stunden", label: "Stunden" },
   ];
 
   function isActive(href: string) {

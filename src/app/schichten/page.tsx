@@ -6,10 +6,12 @@ import {
   Panel,
   Button,
   Input,
+  Select,
   EmptyState,
 } from "@/components/ui";
 
 type Competency = { id: string; name: string; color: string };
+type ShiftKind = "DAY" | "NIGHT";
 type Requirement = {
   competencyId: string;
   minCount: number;
@@ -23,6 +25,7 @@ type Shift = {
   color: string;
   active: boolean;
   sortOrder: number;
+  kind: ShiftKind;
   requirements: Requirement[];
 };
 
@@ -35,6 +38,7 @@ export default function SchichtenPage() {
   const [endTime, setEndTime] = useState("14:00");
   const [color, setColor] = useState("#0f766e");
   const [sortOrder, setSortOrder] = useState(0);
+  const [kind, setKind] = useState<ShiftKind>("DAY");
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
@@ -60,6 +64,7 @@ export default function SchichtenPage() {
     setEndTime("14:00");
     setColor("#0f766e");
     setSortOrder(0);
+    setKind("DAY");
     setCounts({});
   }
 
@@ -70,6 +75,7 @@ export default function SchichtenPage() {
     setEndTime(shift.endTime);
     setColor(shift.color);
     setSortOrder(shift.sortOrder);
+    setKind(shift.kind ?? "DAY");
     const map: Record<string, number> = {};
     for (const r of shift.requirements) {
       map[r.competencyId] = r.minCount;
@@ -83,7 +89,15 @@ export default function SchichtenPage() {
       competencyId: c.id,
       minCount: counts[c.id] ?? 0,
     }));
-    const payload = { name, startTime, endTime, color, sortOrder, requirements };
+    const payload = {
+      name,
+      startTime,
+      endTime,
+      color,
+      sortOrder,
+      kind,
+      requirements,
+    };
 
     if (editing) {
       await fetch(`/api/shifts/${editing.id}`, {
@@ -157,6 +171,14 @@ export default function SchichtenPage() {
                 onChange={(e) => setSortOrder(Number(e.target.value))}
               />
             </div>
+            <Select
+              label="Schichtart (für Tag-/Nacht-Präferenzen der Mitarbeiter)"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as ShiftKind)}
+            >
+              <option value="DAY">Tag</option>
+              <option value="NIGHT">Nacht</option>
+            </Select>
 
             <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-2)]/40 p-3">
               <p className="mb-3 text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
@@ -227,6 +249,15 @@ export default function SchichtenPage() {
                       <h3 className="font-[family-name:var(--font-display)] text-lg">
                         {s.name}
                       </h3>
+                      <span
+                        className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                          s.kind === "NIGHT"
+                            ? "bg-slate-700 text-white"
+                            : "bg-amber-100 text-amber-800"
+                        }`}
+                      >
+                        {s.kind === "NIGHT" ? "Nacht" : "Tag"}
+                      </span>
                     </div>
                     <p className="text-sm text-[var(--muted)]">
                       {s.startTime}–{s.endTime}

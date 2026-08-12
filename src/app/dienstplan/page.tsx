@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { addDays } from "date-fns";
 import { PageHeader, Panel, Button, Badge, EmptyState } from "@/components/ui";
+import { apiSend, ApiError } from "@/lib/api";
 import {
   ABSENCE_LABELS,
   formatDayLabel,
@@ -18,6 +19,7 @@ type Shift = {
   startTime: string;
   endTime: string;
   color: string;
+  kind: "DAY" | "NIGHT";
   requirements: { competencyId: string; minCount: number; competency: Competency }[];
 };
 type Assignment = {
@@ -48,6 +50,11 @@ type Warning = {
   required: number;
   assigned: number;
 };
+type EmployeeOption = {
+  id: string;
+  name: string;
+  competencies: { competency: Competency }[];
+};
 
 type ScheduleData = {
   days: string[];
@@ -55,6 +62,7 @@ type ScheduleData = {
   assignments: Assignment[];
   absences: Absence[];
   competencies: Competency[];
+  employees: EmployeeOption[];
 };
 
 export default function DienstplanPage() {
@@ -65,6 +73,10 @@ export default function DienstplanPage() {
   const [generating, setGenerating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [mobileDay, setMobileDay] = useState(() => toISODate(new Date()));
+  const [editMode, setEditMode] = useState(false);
+  const [addingCell, setAddingCell] = useState<string | null>(null);
+  const [pickEmployeeId, setPickEmployeeId] = useState("");
+  const [busyCell, setBusyCell] = useState<string | null>(null);
 
   const end = useMemo(() => toISODate(addDays(new Date(week + "T00:00:00"), 6)), [week]);
 
@@ -140,6 +152,147 @@ export default function DienstplanPage() {
     );
   }
 
+  function cellKey(day: string, shiftId: string) {
+    return `${day}__${shiftId}`;
+  }
+
+  function availableEmployees(day: string, shiftId: string) {
+    const already = new Set(shiftPeople(day, shiftId).map((p) => p.employeeId));
+    return (data?.employees ?? []).filter((e) => !already.has(e.id));
+  }
+
+  async function handleAdd(day: string, shiftId: string, force = false) {
+    if (!pickEmployeeId) return;
+    const key = cellKey(day, shiftId);
+    setBusyCell(key);
+    try {
+      await apiSend("/api/assignments", "POST", {
+        date: day,
+        shiftTemplateId: shiftId,
+        employeeId: pickEmployeeId,
+        force,
+      });
+      setAddingCell(null);
+      setPickEmployeeId("");
+      await load();
+    } catch (err) {
+      if (
+        err instanceof ApiError &&
+        err.status === 409 &&
+        (err.body as { code?: string } | undefined)?.code === "ABSENT"
+      ) {
+        if (confirm(`${err.message}\n\nTrotzdem eintragen?`)) {
+          await handleAdd(day, shiftId, true);
+          return;
+        }
+      } else {
+        alert(err instanceof Error ? err.message : "Hinzufügen fehlgeschlagen");
+      }
+    } finally {
+      setBusyCell(null);
+    }
+  }
+
+  async function handleRemove(assignmentId: string, cellKeyStr: string) {
+    setBusyCell(cellKeyStr);
+    try {
+      await apiSend(`/api/assignments/${assignmentId}`, "DELETE");
+      await load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Entfernen fehlgeschlagen");
+    } finally {
+      setBusyCell(null);
+    }
+  }
+
+  function PersonCard({
+    p,
+    cellKeyStr,
+    compact,
+  }: {
+    p: Assignment;
+    cellKeyStr: string;
+    compact?: boolean;
+  }) {
+    return (
+      <li className="rounded-md border border-[var(--line)] bg-white px-2 py-1.5">
+        <div className="flex items-start justify-between gap-1">
+          <div className="font-medium text-[var(--ink)]">{p.employee.name}</div>
+          {editMode ? (
+            <button
+              type="button"
+              title="Entfernen"
+              disabled={busyCell === cellKeyStr}
+              onClick={() => handleRemove(p.id, cellKeyStr)}
+              className="shrink-0 rounded text-[var(--danger)] hover:bg-rose-50 px-1 text-xs font-bold leading-5 disabled:opacity-40"
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
+        <div className="mt-1 flex flex-wrap gap-1">
+          {p.employee.competencies.slice(0, compact ? 3 : undefined).map((c) => (
+            <Badge key={c.competency.id} color={c.competency.color}>
+              {c.competency.name}
+            </Badge>
+          ))}
+        </div>
+      </li>
+    );
+  }
+
+  function AddControl({ day, shiftId }: { day: string; shiftId: string }) {
+    const key = cellKey(day, shiftId);
+    const options = availableEmployees(day, shiftId);
+    if (addingCell !== key) {
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            setAddingCell(key);
+            setPickEmployeeId("");
+          }}
+          className="mt-1 w-full rounded-md border border-dashed border-[var(--line)] py-1 text-xs text-[var(--accent)] hover:bg-[var(--surface-2)]"
+        >
+          + hinzufügen
+        </button>
+      );
+    }
+    return (
+      <div className="mt-1 space-y-1 rounded-md border border-[var(--accent)]/40 bg-[var(--surface-2)]/60 p-1.5">
+        <select
+          className="w-full rounded border border-[var(--line)] bg-white px-1.5 py-1 text-xs"
+          value={pickEmployeeId}
+          onChange={(e) => setPickEmployeeId(e.target.value)}
+        >
+          <option value="">Person wählen…</option>
+          {options.map((emp) => (
+            <option key={emp.id} value={emp.id}>
+              {emp.name}
+            </option>
+          ))}
+        </select>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            disabled={!pickEmployeeId || busyCell === key}
+            onClick={() => handleAdd(day, shiftId)}
+            className="flex-1 rounded bg-[var(--accent)] py-1 text-xs font-medium text-white disabled:opacity-40"
+          >
+            OK
+          </button>
+          <button
+            type="button"
+            onClick={() => setAddingCell(null)}
+            className="flex-1 rounded bg-white py-1 text-xs text-[var(--ink-soft)] border border-[var(--line)]"
+          >
+            Abbrechen
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="animate-fade-up">
       <PageHeader
@@ -169,6 +322,15 @@ export default function DienstplanPage() {
             >
               Nächste →
             </Button>
+            <Button
+              variant={editMode ? "primary" : "secondary"}
+              onClick={() => {
+                setEditMode((v) => !v);
+                setAddingCell(null);
+              }}
+            >
+              {editMode ? "Bearbeiten beenden" : "Nachträglich anpassen"}
+            </Button>
             <Button onClick={generate} disabled={generating}>
               {generating ? "Plant…" : "Plan neu generieren"}
             </Button>
@@ -183,6 +345,11 @@ export default function DienstplanPage() {
         {message ? (
           <span className="rounded-md bg-[var(--surface-2)] px-3 py-1 text-sm text-[var(--ink-soft)]">
             {message}
+          </span>
+        ) : null}
+        {editMode ? (
+          <span className="rounded-md bg-[var(--accent)]/10 px-3 py-1 text-sm text-[var(--accent-strong)]">
+            Bearbeitungsmodus aktiv – Personen hinzufügen/entfernen möglich
           </span>
         ) : null}
       </div>
@@ -240,6 +407,7 @@ export default function DienstplanPage() {
 
             {data.shifts.map((shift) => {
               const people = shiftPeople(mobileDay, shift.id);
+              const key = cellKey(mobileDay, shift.id);
               return (
                 <Panel key={shift.id}>
                   <div className="mb-3 flex items-center gap-2">
@@ -248,7 +416,12 @@ export default function DienstplanPage() {
                       style={{ backgroundColor: shift.color }}
                     />
                     <div>
-                      <div className="font-semibold">{shift.name}</div>
+                      <div className="font-semibold">
+                        {shift.name}{" "}
+                        <span className="text-xs font-normal text-[var(--muted)]">
+                          ({shift.kind === "NIGHT" ? "Nacht" : "Tag"})
+                        </span>
+                      </div>
                       <div className="text-xs text-[var(--muted)]">
                         {shift.startTime}–{shift.endTime}
                       </div>
@@ -259,22 +432,11 @@ export default function DienstplanPage() {
                   ) : (
                     <ul className="space-y-2">
                       {people.map((p) => (
-                        <li
-                          key={p.id}
-                          className="rounded-lg border border-[var(--line)] bg-white px-3 py-2"
-                        >
-                          <div className="font-medium">{p.employee.name}</div>
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {p.employee.competencies.map((c) => (
-                              <Badge key={c.competency.id} color={c.competency.color}>
-                                {c.competency.name}
-                              </Badge>
-                            ))}
-                          </div>
-                        </li>
+                        <PersonCard key={p.id} p={p} cellKeyStr={key} />
                       ))}
                     </ul>
                   )}
+                  {editMode ? <AddControl day={mobileDay} shiftId={shift.id} /> : null}
                 </Panel>
               );
             })}
@@ -307,7 +469,7 @@ export default function DienstplanPage() {
                   {data.days.map((d) => (
                     <th
                       key={d}
-                      className="min-w-[140px] px-3 py-3 text-left font-semibold text-[var(--ink)]"
+                      className="min-w-[160px] px-3 py-3 text-left font-semibold text-[var(--ink)]"
                     >
                       {formatDayLabel(d)}
                     </th>
@@ -324,7 +486,12 @@ export default function DienstplanPage() {
                           style={{ backgroundColor: shift.color }}
                         />
                         <div>
-                          <div className="font-semibold">{shift.name}</div>
+                          <div className="font-semibold">
+                            {shift.name}{" "}
+                            <span className="text-xs font-normal text-[var(--muted)]">
+                              ({shift.kind === "NIGHT" ? "Nacht" : "Tag"})
+                            </span>
+                          </div>
                           <div className="text-xs text-[var(--muted)]">
                             {shift.startTime}–{shift.endTime}
                           </div>
@@ -344,6 +511,7 @@ export default function DienstplanPage() {
                     </td>
                     {data.days.map((day) => {
                       const people = shiftPeople(day, shift.id);
+                      const key = cellKey(day, shift.id);
                       return (
                         <td key={day} className="px-2 py-2">
                           {people.length === 0 ? (
@@ -351,27 +519,13 @@ export default function DienstplanPage() {
                           ) : (
                             <ul className="space-y-1.5">
                               {people.map((p) => (
-                                <li
-                                  key={p.id}
-                                  className="rounded-md border border-[var(--line)] bg-white px-2 py-1.5"
-                                >
-                                  <div className="font-medium text-[var(--ink)]">
-                                    {p.employee.name}
-                                  </div>
-                                  <div className="mt-1 flex flex-wrap gap-1">
-                                    {p.employee.competencies.slice(0, 3).map((c) => (
-                                      <Badge
-                                        key={c.competency.id}
-                                        color={c.competency.color}
-                                      >
-                                        {c.competency.name}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                </li>
+                                <PersonCard key={p.id} p={p} cellKeyStr={key} compact />
                               ))}
                             </ul>
                           )}
+                          {editMode ? (
+                            <AddControl day={day} shiftId={shift.id} />
+                          ) : null}
                         </td>
                       );
                     })}

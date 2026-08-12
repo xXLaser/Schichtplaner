@@ -26,6 +26,7 @@ const schema = z.object({
   color: z.string().optional(),
   active: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
+  kind: z.enum(["DAY", "NIGHT"]).optional(),
   requirements: z
     .array(
       z.object({
@@ -47,6 +48,7 @@ export async function POST(req: NextRequest) {
         color: body.color,
         active: body.active ?? true,
         sortOrder: body.sortOrder ?? 0,
+        kind: body.kind ?? "DAY",
         requirements: body.requirements
           ? {
               create: body.requirements

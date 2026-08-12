@@ -19,17 +19,39 @@ model Competency {
 }
 
 model Employee {
-  id                   String   @id @default(cuid())
-  name                 String
-  email                String?
-  active               Boolean  @default(true)
-  maxShifts            Int      @default(5)
-  vacationDaysPerYear  Int      @default(30)
-  createdAt            DateTime @default(now())
+  id                  String          @id @default(cuid())
+  name                String
+  email               String?
+  active              Boolean         @default(true)
+  maxShifts           Int             @default(5)
+  vacationDaysPerYear Int             @default(30)
+  createdAt           DateTime        @default(now())
+
+  // Schichtpräferenz: fest Tag, fest Nacht, wechselnd (Rotation) oder egal
+  shiftPreference   ShiftPreference @default(ANY)
+  rotationWeeks     Int             @default(1)
+  rotationStartDate DateTime?
+  rotationStartKind ShiftKind       @default(DAY)
+
+  // Sollstunden pro Monat oder Quartal (z. B. für Teilzeit/Vollzeit)
+  targetHours Float?
+  hoursPeriod HoursPeriod @default(MONTH)
 
   competencies EmployeeCompetency[]
   absences     Absence[]
   assignments  Assignment[]
+}
+
+enum ShiftPreference {
+  ANY
+  DAY_ONLY
+  NIGHT_ONLY
+  ROTATING
+}
+
+enum HoursPeriod {
+  MONTH
+  QUARTER
 }
 
 model EmployeeCompetency {
@@ -67,17 +89,23 @@ enum AbsenceStatus {
 }
 
 model ShiftTemplate {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   name      String
   startTime String
   endTime   String
-  color     String   @default("#334155")
-  active    Boolean  @default(true)
-  sortOrder Int      @default(0)
-  createdAt DateTime @default(now())
+  color     String    @default("#334155")
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0)
+  kind      ShiftKind @default(DAY)
+  createdAt DateTime  @default(now())
 
   requirements ShiftRequirement[]
   assignments  Assignment[]
+}
+
+enum ShiftKind {
+  DAY
+  NIGHT
 }
 
 model ShiftRequirement {
