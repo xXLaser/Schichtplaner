@@ -39,7 +39,19 @@ Falls die Startdatei nach `node -v` stehen bleibt: sehr wahrscheinlich der **fal
 
 **→ [INSTALLATION-WINDOWS.md](INSTALLATION-WINDOWS.md)**
 
-## Portable EXE (Windows)
+## Portable EXE (Windows) – ohne Befehle
+
+**Download:** [GitHub Releases](https://github.com/xXLaser/Schichtplaner/releases) → `Schichtwerk.exe` herunterladen und starten.
+
+Für Maintainer (EXE neu bauen und veröffentlichen):
+
+```bash
+# Option A: GitHub Actions manuell starten (Actions → „Windows EXE bauen“ → Run)
+# Option B: Versions-Tag pushen → Release wird automatisch erstellt
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+Lokaler Build (Entwicklung):
 
 ```bash
 npm run build:exe

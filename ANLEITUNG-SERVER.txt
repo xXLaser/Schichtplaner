@@ -14,10 +14,13 @@ Erst danach ist die normale App sichtbar.
 
 
 --------------------------------------------------------------------------------
-WEG 0: LOKALE EXE
+WEG 0: LOKALE EXE (empfohlen – ohne Befehle)
 --------------------------------------------------------------------------------
 
-Bauen:  npm run build:exe
+Download: https://github.com/xXLaser/Schichtplaner/releases
+  → Neueste Schichtwerk.exe herunterladen und starten.
+
+Selbst bauen (nur Entwickler):  npm run build:exe
 Start:  release\Schichtwerk.exe
 Alternativ (Node.js noetig): starten-lokal.bat
 

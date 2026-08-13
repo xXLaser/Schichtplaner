@@ -1,0 +1,56 @@
+name: Windows EXE bauen
+
+on:
+  # Manuell startbar: GitHub → Actions → "Windows EXE bauen" → Run workflow
+  workflow_dispatch:
+  # Bei jedem Versions-Tag (z. B. v0.2.0) automatisch bauen und veröffentlichen
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-exe:
+    name: Schichtwerk.exe erstellen
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Repository auschecken
+        uses: actions/checkout@v4
+
+      - name: Node.js einrichten
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Abhängigkeiten installieren
+        run: npm ci
+
+      - name: Prisma Client generieren
+        run: npx prisma generate
+
+      - name: Portable EXE bauen
+        run: npm run build:exe
+        env:
+          CI: true
+
+      - name: EXE als Workflow-Artefakt hochladen
+        uses: actions/upload-artifact@v4
+        with:
+          name: Schichtwerk-Windows
+          path: release/Schichtwerk.exe
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Bei Versions-Tag GitHub Release erstellen
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/Schichtwerk.exe
+          generate_release_notes: true
+          draft: false
+          prerelease: false

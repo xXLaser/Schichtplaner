@@ -3,7 +3,32 @@
 Diese Anleitung erklärt Schritt für Schritt, wie Sie das Dienstplan-Programm **Schichtwerk** auf einem Windows-PC einrichten.  
 Sie brauchen **keine Programmierkenntnisse** – folgen Sie einfach der Reihe nach den Punkten.
 
-Geschätzte Dauer beim ersten Mal: etwa 15–25 Minuten.
+---
+
+## Schnellstart: EXE herunterladen (empfohlen)
+
+**Keine Befehle, kein Node.js nötig** – einfach die fertige Datei laden und starten:
+
+1. Öffnen Sie die **Releases**-Seite des Projekts:  
+   **https://github.com/xXLaser/Schichtplaner/releases**
+2. Laden Sie die neueste **`Schichtwerk.exe`** herunter.
+3. Doppelklick auf `Schichtwerk.exe` – die App startet lokal.
+4. Beim ersten Start erscheint der **Setup-Assistent** (Administrator, Kompetenzen, Schichten, Mitarbeiter, 2-Wochen-Plan).
+
+**Datenbank:** `%LOCALAPPDATA%\schichtwerk-desktop\data\dev.db`
+
+> Falls noch keine Release-Datei vorhanden ist: Ein Maintainer muss einmalig den GitHub-Workflow **„Windows EXE bauen“** starten (Actions → Run workflow) oder einen Versions-Tag setzen (z. B. `v0.2.0`). Danach steht die EXE zum Download bereit.
+
+---
+
+## Alternative: Selbst bauen (für Entwickler)
+
+Falls Sie die EXE selbst erzeugen möchten: `npm run build:exe` → `release/Schichtwerk.exe`  
+(siehe Abschnitt unten für die vollständige Entwickler-Installation)
+
+---
+
+Geschätzte Dauer beim ersten Mal (nur Entwickler-Weg): etwa 15–25 Minuten.
 
 ---
 
