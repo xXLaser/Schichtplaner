@@ -1,0 +1,168 @@
+================================================================================
+SCHICHTWERK AUF DEM WINDOWS-SERVER – ZENTRALE ANLEITUNG
+================================================================================
+
+Es gibt DREI Wege, Schichtwerk zu betreiben.
+
+  WEG 0: Lokale EXE (Einzelplatz / Inbetriebnahme mit Setup-Assistent)
+  WEG 1: Windows-Dienst (Server ohne Docker)
+  WEG 2: Docker (falls Docker bereits verfuegbar ist)
+
+Beim ERSTEN Start (leere Datenbank) erscheint der Setup-Assistent
+(Kompetenzen, Schichten, Mitarbeiter, 2-Wochen-Dienstplan).
+Erst danach ist die normale App sichtbar.
+
+
+--------------------------------------------------------------------------------
+WEG 0: LOKALE EXE (empfohlen – ohne Befehle)
+--------------------------------------------------------------------------------
+
+Download: https://github.com/xXLaser/Schichtplaner/releases
+  → Neueste Schichtwerk.exe herunterladen und starten.
+
+Selbst bauen (nur Entwickler):  npm run build:exe
+Start:  release\Schichtwerk.exe
+Alternativ (Node.js noetig): starten-lokal.bat
+
+Datenbank: %LOCALAPPDATA%\schichtwerk-desktop\data\dev.db
+(bei starten-lokal.bat: %LOCALAPPDATA%\Schichtwerk\data\dev.db)
+
+
+--------------------------------------------------------------------------------
+SCHRITT 0: Richtigen Ordner sicherstellen
+--------------------------------------------------------------------------------
+
+Ein sehr haeufiger Fehler: ein alter/anderer Ordner (z. B. nur mit "server.js")
+wird gestartet statt des echten Schichtwerk-Projekts.
+
+1. Aktuellen Stand laden:
+   https://github.com/xXLaser/Schichtplaner/archive/refs/heads/cursor/schichtplaner-tool-94b2.zip
+
+2. ZIP nach genau diesem Ort entpacken:
+   C:\Schichtwerk
+
+   Danach MUSS direkt vorhanden sein (nicht in einem Unterordner!):
+     C:\Schichtwerk\package.json
+     C:\Schichtwerk\WINDOWS-DIENST-INSTALLIEREN.bat
+     C:\Schichtwerk\Dockerfile
+     C:\Schichtwerk\src
+     C:\Schichtwerk\prisma
+
+   Falls das alles erst in einem Unterordner liegt (z. B.
+   C:\Schichtwerk\Schichtplaner-xxx\...): den Inhalt dieses Unterordners
+   eine Ebene nach oben nach C:\Schichtwerk verschieben.
+
+3. Doppelklick auf PRUEFEN.bat -> es muss ueberall [OK] stehen.
+
+
+--------------------------------------------------------------------------------
+WEG 1: WINDOWS-DIENST (ohne Docker) – EMPFOHLEN
+--------------------------------------------------------------------------------
+
+1. Node.js LTS installieren, falls noch nicht vorhanden:
+   https://nodejs.org/
+
+2. Im Ordner C:\Schichtwerk:
+   Rechtsklick auf WINDOWS-DIENST-INSTALLIEREN.bat
+   -> "Als Administrator ausfuehren"
+
+   Das Skript macht automatisch:
+     - laedt einmalig ein kleines Hilfswerkzeug (nssm) herunter
+     - baut die Anwendung (kann beim ersten Mal einige Minuten dauern)
+     - richtet die Datenbank ein und laedt Beispieldaten
+     - installiert einen Windows-Dienst namens "Schichtwerk"
+     - startet ihn sofort
+
+3. Nach Abschluss im Browser testen:
+   http://localhost:3000/api/health
+   http://SERVER-IP:3000/api/health
+
+4. Fertig. Der Dienst laeuft ab jetzt automatisch bei jedem Windows-Start,
+   auch ohne angemeldeten Benutzer und ohne offenes Fenster.
+
+Das Skript prueft am Ende automatisch, ob der Server wirklich antwortet.
+Steht dort "ACHTUNG - Dienst installiert, antwortet aber noch NICHT":
+  - dist-windows-dienst\dienst-fehler.txt oeffnen und die letzte Meldung lesen
+  - haeufigste Ursachen: Port 3000 bereits belegt, oder die Datenbank-Migration
+    ist fehlgeschlagen (siehe dienst-log.txt)
+
+Verwaltung:
+  - services.msc oeffnen, dort "Schichtwerk" suchen
+    (Starten/Stoppen/Neustarten moeglich)
+  - Logs liegen unter:
+    dist-windows-dienst\dienst-log.txt
+    dist-windows-dienst\dienst-fehler.txt
+
+Dienst wieder entfernen:
+  WINDOWS-DIENST-ENTFERNEN.bat (als Administrator)
+
+Update auf eine neue Version:
+  1. WINDOWS-DIENST-ENTFERNEN.bat ausfuehren
+  2. Neuen Stand ueber die alten Dateien kopieren
+  3. WINDOWS-DIENST-INSTALLIEREN.bat erneut ausfuehren
+
+
+--------------------------------------------------------------------------------
+WEG 2: DOCKER
+--------------------------------------------------------------------------------
+
+Docker auf einem Windows SERVER (nicht Windows 10/11) benoetigt zusaetzlich
+WSL2 oder Hyper-V. Das richtet meist die IT ein. Wenn Docker bereits laeuft:
+
+1. Eingabeaufforderung im Ordner C:\Schichtwerk oeffnen
+2. Ausfuehren:
+
+     docker compose up -d --build
+
+3. Beim ersten Start passiert automatisch:
+   - Datenbank-Migrationen
+   - Beispieldaten, falls die Datenbank leer ist
+   - Server startet auf Port 3000
+
+4. Test:
+     http://localhost:3000/api/health
+
+5. Neustart nach Server-Reboot: Docker startet den Container automatisch
+   erneut (restart: unless-stopped in docker-compose.yml).
+
+Nuetzliche Befehle:
+     docker compose logs -f        (Logs live ansehen)
+     docker compose down           (Container anhalten)
+     docker compose up -d --build  (nach Update neu bauen und starten)
+
+Die Datenbank liegt in einem Docker-Volume ("schichtwerk-data") und bleibt
+bei einem Update/Neubau erhalten.
+
+
+--------------------------------------------------------------------------------
+FIREWALL (bei beiden Wegen notwendig)
+--------------------------------------------------------------------------------
+
+Windows-Firewall -> Erweiterte Einstellungen -> Eingehende Regeln
+-> Neue Regel -> Port -> TCP -> 3000 -> Zulassen
+
+Wichtig: den PORT freigeben, nicht nur das Programm "Node.js" oder "Docker".
+
+
+--------------------------------------------------------------------------------
+DIAGNOSE
+--------------------------------------------------------------------------------
+
+Im Browser (am Server selbst oder von einem anderen PC im Netzwerk):
+
+    http://SERVER-IP:3000/api/health
+
+Zeigt "ok": true und eine Mitarbeiterzahl -> alles funktioniert.
+Zeigt einen Fehler -> der Fehlertext dort beschreibt bereits die Ursache.
+
+
+--------------------------------------------------------------------------------
+WENN ES WEITER NICHT FUNKTIONIERT
+--------------------------------------------------------------------------------
+
+Bitte mitschicken:
+  1. Screenshot vom Explorer-Inhalt von C:\Schichtwerk
+  2. Kompletter Text aus PRUEFEN.bat
+  3. Bei Weg 1: Inhalt von dist-windows-dienst\dienst-fehler.txt
+  4. Bei Weg 2: Ausgabe von "docker compose logs"
+================================================================================

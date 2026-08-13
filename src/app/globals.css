@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+:root {
+  --background: #e8eef2;
+  --surface: #f7fafb;
+  --surface-2: #e2e9ee;
+  --ink: #0f1c24;
+  --ink-soft: #334155;
+  --muted: #64748b;
+  --line: #c9d5de;
+  --accent: #0f766e;
+  --accent-strong: #0d5f59;
+  --danger: #b91c1c;
+  --warn: #b45309;
+  --ok: #047857;
+
+  /*
+   * Systemschriften statt next/font/google: der Build braucht dadurch
+   * keinen Internetzugriff zu fonts.googleapis.com (wichtig auf
+   * abgeschotteten Windows-Servern).
+   */
+  --font-display:
+    "Segoe UI Semibold", "Segoe UI", -apple-system, BlinkMacSystemFont,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-body:
+    "Segoe UI", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial,
+    sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--ink);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+}
+
+body {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(15, 118, 110, 0.12), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(3, 105, 161, 0.1), transparent 50%),
+    linear-gradient(180deg, #dfe8ee 0%, var(--background) 40%, #edf2f5 100%);
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.72;
+  }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.45s ease-out both;
+}
+
+.animate-soft-pulse {
+  animation: soft-pulse 2.2s ease-in-out infinite;
+}
+
+/* Touch-friendly inputs on mobile */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px;
+  }
+}
