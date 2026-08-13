@@ -46,11 +46,13 @@ const schema = z.object({
   workWeekdays: z.string().optional(),
   allowIntermediateShifts: z.boolean().optional(),
   defaultShiftTemplateId: z.string().optional().nullable(),
+  role: z.enum(["STAFF", "TEAM_LEADER"]).optional(),
 });
 
 export async function POST(req: NextRequest) {
   try {
     const body = schema.parse(await req.json());
+    const role = body.role ?? "STAFF";
     const employee = await prisma.employee.create({
       data: {
         name: body.name,
@@ -58,6 +60,7 @@ export async function POST(req: NextRequest) {
         active: body.active ?? true,
         maxShifts: body.maxShifts ?? 5,
         vacationDaysPerYear: body.vacationDaysPerYear ?? 30,
+        role,
         shiftPreference: body.shiftPreference ?? "ANY",
         rotationWeeks: body.rotationWeeks ?? 1,
         rotationStartDate: body.rotationStartDate
@@ -78,7 +81,8 @@ export async function POST(req: NextRequest) {
         partTimeStartTime: body.partTimeStartTime ?? "09:00",
         partTimeEndTime: body.partTimeEndTime ?? "15:00",
         workWeekdays: body.workWeekdays ?? "1,2,3,4,5",
-        allowIntermediateShifts: body.allowIntermediateShifts ?? false,
+        allowIntermediateShifts:
+          body.allowIntermediateShifts ?? role === "TEAM_LEADER",
         defaultShiftTemplateId: body.defaultShiftTemplateId || null,
         competencies: body.competencyIds
           ? {

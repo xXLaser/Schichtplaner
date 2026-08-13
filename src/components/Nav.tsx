@@ -16,6 +16,7 @@ const moreLinks = [
   { href: "/kompetenzen", label: "Kompetenzen" },
   { href: "/schichten", label: "Schichten" },
   { href: "/stunden", label: "Stunden" },
+  { href: "/einstellungen", label: "Einstellungen" },
 ];
 
 export function Nav() {
@@ -37,6 +38,7 @@ export function Nav() {
     { href: "/schichten", label: "Schichten" },
     { href: "/abwesenheiten", label: "Abwesenheiten" },
     { href: "/stunden", label: "Stunden" },
+    { href: "/einstellungen", label: "Einstellungen" },
   ];
 
   function isActive(href: string) {

@@ -29,6 +29,7 @@ const schema = z.object({
   workWeekdays: z.string().optional(),
   allowIntermediateShifts: z.boolean().optional(),
   defaultShiftTemplateId: z.string().optional().nullable(),
+  role: z.enum(["STAFF", "TEAM_LEADER"]).optional(),
 });
 
 export async function PATCH(
@@ -57,6 +58,7 @@ export async function PATCH(
         active: body.active,
         maxShifts: body.maxShifts,
         vacationDaysPerYear: body.vacationDaysPerYear,
+        role: body.role,
         shiftPreference: body.shiftPreference,
         rotationWeeks: body.rotationWeeks,
         rotationStartDate:

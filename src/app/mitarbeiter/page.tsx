@@ -52,6 +52,7 @@ type Employee = {
   workWeekdays: string;
   allowIntermediateShifts: boolean;
   defaultShiftTemplateId: string | null;
+  role?: "STAFF" | "TEAM_LEADER";
   competencies: { competency: Competency }[];
 };
 
@@ -99,6 +100,7 @@ export default function MitarbeiterPage() {
   const [workWeekdays, setWorkWeekdays] = useState("1,2,3,4,5");
   const [allowIntermediate, setAllowIntermediate] = useState(false);
   const [defaultShiftId, setDefaultShiftId] = useState("");
+  const [role, setRole] = useState<"STAFF" | "TEAM_LEADER">("STAFF");
   const [editing, setEditing] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -185,8 +187,11 @@ export default function MitarbeiterPage() {
     setPartTimeStart(emp.partTimeStartTime ?? "09:00");
     setPartTimeEnd(emp.partTimeEndTime ?? "15:00");
     setWorkWeekdays(emp.workWeekdays ?? "1,2,3,4,5");
-    setAllowIntermediate(emp.allowIntermediateShifts ?? false);
+    setAllowIntermediate(
+      emp.role === "TEAM_LEADER" ? true : (emp.allowIntermediateShifts ?? false),
+    );
     setDefaultShiftId(emp.defaultShiftTemplateId ?? "");
+    setRole(emp.role ?? "STAFF");
   }
 
   function resetForm() {
@@ -213,6 +218,7 @@ export default function MitarbeiterPage() {
     setWorkWeekdays("1,2,3,4,5");
     setAllowIntermediate(false);
     setDefaultShiftId("");
+    setRole("STAFF");
   }
 
   async function onSubmit(e: FormEvent) {
@@ -224,6 +230,7 @@ export default function MitarbeiterPage() {
       vacationDaysPerYear: vacationDays,
       competencyIds: selected,
       active: true,
+      role,
       shiftPreference,
       rotationWeeks,
       rotationStartDate: shiftPreference === "ROTATING" ? rotationStartDate : null,
@@ -240,7 +247,7 @@ export default function MitarbeiterPage() {
       partTimeStartTime: partTimeStart,
       partTimeEndTime: partTimeEnd,
       workWeekdays,
-      allowIntermediateShifts: allowIntermediate,
+      allowIntermediateShifts: role === "TEAM_LEADER" ? true : allowIntermediate,
       defaultShiftTemplateId: defaultShiftId || null,
     };
 
@@ -282,9 +289,10 @@ export default function MitarbeiterPage() {
 
   function modelSummary(emp: Employee): string {
     const parts = [
+      emp.role === "TEAM_LEADER" ? "Teamleiter" : null,
       emp.employmentType === "PART_TIME" ? "Teilzeit" : "Vollzeit",
       DUTY_LABELS[emp.dutyModel] ?? emp.dutyModel,
-    ];
+    ].filter((x): x is string => Boolean(x));
     if (emp.dutyModel === "ROTATION_4_4" || emp.dutyModel === "CUSTOM") {
       parts.push(`${emp.dutyOnDays}/${emp.dutyOffDays}`);
       if (emp.allowFifthShiftPerMonth) parts.push("5. Dienst/Monat möglich");
@@ -348,6 +356,18 @@ export default function MitarbeiterPage() {
               <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
                 Dienstmodell
               </p>
+              <Select
+                label="Rolle"
+                value={role}
+                onChange={(e) => {
+                  const next = e.target.value as "STAFF" | "TEAM_LEADER";
+                  setRole(next);
+                  if (next === "TEAM_LEADER") setAllowIntermediate(true);
+                }}
+              >
+                <option value="STAFF">Mitarbeiter</option>
+                <option value="TEAM_LEADER">Teamleiter (9h Zwischendienst)</option>
+              </Select>
               <Select
                 label="Beschäftigung"
                 value={employmentType}

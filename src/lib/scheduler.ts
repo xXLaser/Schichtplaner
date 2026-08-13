@@ -48,6 +48,7 @@ export type GenerateResult = {
 type EmployeeWithSkills = DutyModelConfig & {
   id: string;
   name: string;
+  role: "STAFF" | "TEAM_LEADER";
   competencyIds: Set<string>;
   shiftPreference: "ANY" | "DAY_ONLY" | "NIGHT_ONLY" | "ROTATING";
   rotationWeeks: number;
@@ -114,27 +115,61 @@ class HoursTracker {
     return `${employeeId}|${periodKey}`;
   }
 
-  async hoursSoFar(employee: EmployeeWithSkills, day: Date): Promise<number> {
-    const periodKey = periodKeyFor(day, employee.hoursPeriod);
-    const key = this.cacheKey(employee.id, periodKey);
-    if (this.cache.has(key)) return this.cache.get(key)!;
+  /** Ein Bulk-Load statt N+1-Queries pro Mitarbeiter×Tag. */
+  async preload(
+    employees: EmployeeWithSkills[],
+    rangeStart: Date,
+    rangeEnd: Date,
+  ): Promise<void> {
+    if (employees.length === 0) return;
 
-    const { start, end } = periodBounds(day, employee.hoursPeriod);
+    // Zeitraum so wählen, dass Monats- und Quartalsgrenzen abgedeckt sind
+    const earliest = new Date(
+      rangeStart.getFullYear(),
+      Math.floor(rangeStart.getMonth() / 3) * 3,
+      1,
+    );
+    const latestBounds = periodBounds(rangeEnd, "QUARTER");
+
     const assignments = await prisma.assignment.findMany({
       where: {
-        employeeId: employee.id,
-        date: { gte: start, lte: addDays(end, 1) },
+        employeeId: { in: employees.map((e) => e.id) },
+        date: { gte: earliest, lte: addDays(latestBounds.end, 1) },
       },
       include: { shiftTemplate: true },
     });
-    const hours = assignments.reduce(
-      (sum, a) =>
-        sum +
-        shiftDurationHours(a.shiftTemplate.startTime, a.shiftTemplate.endTime),
-      0,
-    );
-    this.cache.set(key, hours);
-    return hours;
+
+    const byEmp = new Map<string, typeof assignments>();
+    for (const a of assignments) {
+      const list = byEmp.get(a.employeeId) ?? [];
+      list.push(a);
+      byEmp.set(a.employeeId, list);
+    }
+
+    for (const emp of employees) {
+      const list = byEmp.get(emp.id) ?? [];
+      const periodKeys = new Set<string>();
+      // Cache für Start- und Endperiode (und dazwischen bei Quartalswechsel)
+      periodKeys.add(periodKeyFor(rangeStart, emp.hoursPeriod));
+      periodKeys.add(periodKeyFor(rangeEnd, emp.hoursPeriod));
+      for (const key of periodKeys) {
+        const sampleDay =
+          key === periodKeyFor(rangeEnd, emp.hoursPeriod) ? rangeEnd : rangeStart;
+        const { start, end } = periodBounds(sampleDay, emp.hoursPeriod);
+        const hours = list
+          .filter((a) => a.date >= start && a.date <= addDays(end, 1))
+          .reduce(
+            (sum, a) =>
+              sum +
+              shiftDurationHours(
+                a.shiftTemplate.startTime,
+                a.shiftTemplate.endTime,
+              ),
+            0,
+          );
+        this.cache.set(this.cacheKey(emp.id, key), hours);
+      }
+    }
   }
 
   addHours(employee: EmployeeWithSkills, day: Date, hours: number) {
@@ -211,6 +246,7 @@ export async function generateSchedule(
   const pool: EmployeeWithSkills[] = employees.map((e) => ({
     id: e.id,
     name: e.name,
+    role: e.role,
     ...toDutyConfig(e),
     competencyIds: new Set(e.competencies.map((c) => c.competencyId)),
     shiftPreference: e.shiftPreference,
@@ -278,11 +314,7 @@ export async function generateSchedule(
   }
 
   const hoursTracker = new HoursTracker();
-  for (const day of days) {
-    for (const e of pool) {
-      await hoursTracker.hoursSoFar(e, day);
-    }
-  }
+  await hoursTracker.preload(pool, start, end);
 
   const toCreate: {
     date: Date;
@@ -530,6 +562,28 @@ export async function generateSchedule(
           canAssign(e, day, shift);
 
         const stillOpen = openOtherOnShift();
+        const isPartTimeShift =
+          shift.startTime === "09:00" && shift.endTime === "15:00";
+        const isTeamLeaderShift = shift.kind === "INTERMEDIATE";
+
+        function roleFit(e: EmployeeWithSkills): number {
+          // Teamleiter → Zwischendienst; Teilzeit → Tag-Teilzeit; sonst Vollzeit-Schichten
+          if (isTeamLeaderShift) {
+            if (e.role === "TEAM_LEADER" || e.allowIntermediateShifts) return 0;
+            return 3;
+          }
+          if (isPartTimeShift) {
+            if (e.dutyModel === "WEEKDAYS" || e.employmentType === "PART_TIME")
+              return 0;
+            return 2;
+          }
+          // Normale Tag/Nacht: Teilzeit und reine Teamleiter nachrangig
+          if (e.dutyModel === "WEEKDAYS" || e.employmentType === "PART_TIME")
+            return 2;
+          if (e.role === "TEAM_LEADER" && !e.allowIntermediateShifts) return 1;
+          return 0;
+        }
+
         function preferenceFit(e: EmployeeWithSkills): number {
           if (shift.kind === "DAY") {
             if (e.shiftPreference === "DAY_ONLY") return 0;
@@ -543,12 +597,28 @@ export async function generateSchedule(
               return 1;
             return 2;
           }
+          // Intermediate: Teamleiter zuerst, dann wer Intermediate darf
+          if (e.role === "TEAM_LEADER") return 0;
+          if (e.allowIntermediateShifts) return 1;
+          return 2;
+        }
+
+        function defaultShiftFit(e: EmployeeWithSkills): number {
+          if (e.defaultShiftTemplateId && e.defaultShiftTemplateId === shift.id)
+            return 0;
           return 1;
         }
+
         const candidates = pool.filter(baseFilter).sort((a, b) => {
+          const ra = roleFit(a);
+          const rb = roleFit(b);
+          if (ra !== rb) return ra - rb;
           const pa = preferenceFit(a);
           const pb = preferenceFit(b);
           if (pa !== pb) return pa - pb;
+          const da = defaultShiftFit(a);
+          const db = defaultShiftFit(b);
+          if (da !== db) return da - db;
           const rareA = stillOpen.filter((r) =>
             a.competencyIds.has(r.competencyId),
           ).length;
@@ -562,7 +632,11 @@ export async function generateSchedule(
           const fa = fractionFilled(a, day);
           const fb = fractionFilled(b, day);
           if (fa !== fb) return fa - fb;
-          return a.competencyIds.size - b.competencyIds.size;
+          // Stabilere Reihenfolge: Name statt Set-Größe (weniger „willkürliche“ Sprünge)
+          if (a.competencyIds.size !== b.competencyIds.size) {
+            return a.competencyIds.size - b.competencyIds.size;
+          }
+          return a.name.localeCompare(b.name, "de");
         });
 
         if (candidates.length === 0) break;
@@ -607,9 +681,24 @@ export async function getSchedule(startDate: string, endDate: string) {
         },
         include: {
           employee: {
-            include: { competencies: { include: { competency: true } } },
+            select: {
+              id: true,
+              name: true,
+              role: true,
+              competencies: { include: { competency: true } },
+            },
           },
-          shiftTemplate: true,
+          shiftTemplate: {
+            select: {
+              id: true,
+              name: true,
+              startTime: true,
+              endTime: true,
+              color: true,
+              kind: true,
+              sortOrder: true,
+            },
+          },
         },
         orderBy: [{ date: "asc" }],
       }),
@@ -619,7 +708,7 @@ export async function getSchedule(startDate: string, endDate: string) {
           startDate: { lte: end },
           endDate: { gte: start },
         },
-        include: { employee: true },
+        include: { employee: { select: { id: true, name: true } } },
       }),
       prisma.shiftTemplate.findMany({
         where: { active: true },
@@ -628,7 +717,15 @@ export async function getSchedule(startDate: string, endDate: string) {
       }),
       prisma.employee.findMany({
         where: { active: true },
-        include: { competencies: { include: { competency: true } } },
+        select: {
+          id: true,
+          name: true,
+          role: true,
+          employmentType: true,
+          dutyModel: true,
+          shiftPreference: true,
+          competencies: { include: { competency: true } },
+        },
         orderBy: { name: "asc" },
       }),
       prisma.competency.findMany({ orderBy: { name: "asc" } }),
@@ -637,8 +734,10 @@ export async function getSchedule(startDate: string, endDate: string) {
           date: { gte: start, lte: addDays(end, 1) },
         },
         include: {
-          employee: true,
-          shiftTemplate: true,
+          employee: { select: { id: true, name: true } },
+          shiftTemplate: {
+            select: { id: true, name: true, color: true, kind: true },
+          },
         },
       }),
     ]);

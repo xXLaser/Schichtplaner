@@ -56,6 +56,8 @@ type EmployeeOption = {
   competencies: { competency: Competency }[];
 };
 
+type Holiday = { date: string; name: string };
+
 type ScheduleData = {
   days: string[];
   shifts: Shift[];
@@ -63,6 +65,7 @@ type ScheduleData = {
   absences: Absence[];
   competencies: Competency[];
   employees: EmployeeOption[];
+  holidays?: Holiday[];
 };
 
 export default function DienstplanPage() {
@@ -138,6 +141,35 @@ export default function DienstplanPage() {
       await load();
     } finally {
       setGenerating(false);
+    }
+  }
+
+  function holidayName(day: string): string | null {
+    return data?.holidays?.find((h) => h.date === day)?.name ?? null;
+  }
+
+  function exportPlan() {
+    window.location.href = `/api/schedule/export?from=${week}&to=${end}&source=assignments`;
+  }
+
+  async function importPlanFile(file: File) {
+    setMessage(null);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const res = await apiSend<{
+        created: number;
+        skipped: number;
+      }>("/api/schedule/import", "POST", {
+        payload,
+        target: "assignments",
+        replaceRange: true,
+        createMissing: true,
+      });
+      setMessage(`Import: ${res.created} Einträge` + (res.skipped ? `, ${res.skipped} übersprungen` : ""));
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Import fehlgeschlagen");
     }
   }
 
@@ -338,6 +370,22 @@ export default function DienstplanPage() {
             <Button onClick={generate} disabled={generating}>
               {generating ? "Plant…" : "Plan neu generieren"}
             </Button>
+            <Button variant="secondary" onClick={exportPlan}>
+              Export JSON
+            </Button>
+            <label className="inline-flex cursor-pointer items-center rounded-md border border-[var(--line)] bg-white px-3 py-2 text-sm text-[var(--ink-soft)] hover:bg-[var(--surface-2)]">
+              Import JSON
+              <input
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void importPlanFile(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
           </>
         }
       />
@@ -393,21 +441,33 @@ export default function DienstplanPage() {
           {/* Mobile: Tag für Tag */}
           <div className="space-y-4 lg:hidden">
             <div className="flex gap-1 overflow-x-auto pb-1">
-              {data.days.map((d) => (
-                <button
-                  key={d}
-                  type="button"
-                  onClick={() => setMobileDay(d)}
-                  className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium ${
-                    mobileDay === d
-                      ? "bg-[var(--accent)] text-white"
-                      : "bg-[var(--surface)] border border-[var(--line)] text-[var(--ink-soft)]"
-                  }`}
-                >
-                  {formatDayLabel(d)}
-                </button>
-              ))}
+              {data.days.map((d) => {
+                const hol = holidayName(d);
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    title={hol ?? undefined}
+                    onClick={() => setMobileDay(d)}
+                    className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium ${
+                      mobileDay === d
+                        ? "bg-[var(--accent)] text-white"
+                        : hol
+                          ? "border border-[#f59e0b] bg-[#fffbeb] text-[var(--warn)]"
+                          : "bg-[var(--surface)] border border-[var(--line)] text-[var(--ink-soft)]"
+                    }`}
+                  >
+                    {formatDayLabel(d)}
+                    {hol ? <span className="mt-0.5 block text-[9px] opacity-80">Feiertag</span> : null}
+                  </button>
+                );
+              })}
             </div>
+            {holidayName(mobileDay) ? (
+              <p className="rounded-md border border-[#f59e0b]/50 bg-[#fffbeb] px-3 py-2 text-sm text-[var(--warn)]">
+                Feiertag: {holidayName(mobileDay)}
+              </p>
+            ) : null}
 
             {data.shifts.map((shift) => {
               const people = shiftPeople(mobileDay, shift.id);
@@ -470,14 +530,27 @@ export default function DienstplanPage() {
                   <th className="sticky left-0 z-10 bg-[var(--surface-2)] px-3 py-3 text-left font-semibold text-[var(--ink)]">
                     Schicht
                   </th>
-                  {data.days.map((d) => (
-                    <th
-                      key={d}
-                      className="min-w-[160px] px-3 py-3 text-left font-semibold text-[var(--ink)]"
-                    >
-                      {formatDayLabel(d)}
-                    </th>
-                  ))}
+                  {data.days.map((d) => {
+                    const hol = holidayName(d);
+                    return (
+                      <th
+                        key={d}
+                        title={hol ?? undefined}
+                        className={`min-w-[160px] px-3 py-3 text-left font-semibold ${
+                          hol
+                            ? "bg-[#fffbeb] text-[var(--warn)]"
+                            : "text-[var(--ink)]"
+                        }`}
+                      >
+                        {formatDayLabel(d)}
+                        {hol ? (
+                          <div className="mt-0.5 text-[10px] font-normal leading-tight">
+                            {hol}
+                          </div>
+                        ) : null}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>

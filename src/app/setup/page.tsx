@@ -12,12 +12,14 @@ type OnboardingStatus = {
   completed: boolean;
   step: string;
   counts: {
+    admins: number;
     competencies: number;
     shifts: number;
     employees: number;
     baseEntries: number;
   };
   canProceed: {
+    admin: boolean;
     competencies: boolean;
     shifts: boolean;
     employees: boolean;
@@ -42,6 +44,7 @@ type Employee = {
   name: string;
   dutyModel: string;
   shiftPreference: string;
+  role?: string;
   competencies: { competencyId: string; competency: Competency }[];
 };
 type BaseEntry = {
@@ -54,6 +57,8 @@ type BaseEntry = {
 
 const STEPS = [
   { id: "welcome", label: "Start" },
+  { id: "admin", label: "Admin" },
+  { id: "options", label: "Optionen" },
   { id: "competencies", label: "Kompetenzen" },
   { id: "shifts", label: "Schichten" },
   { id: "employees", label: "Mitarbeiter" },
@@ -69,6 +74,15 @@ export default function SetupPage() {
   const [step, setStep] = useState<StepId>("welcome");
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const [adminUser, setAdminUser] = useState("");
+  const [adminPass, setAdminPass] = useState("");
+  const [adminName, setAdminName] = useState("");
+
+  const [dbMode, setDbMode] = useState<"sqlite" | "mysql">("sqlite");
+  const [mysqlUrl, setMysqlUrl] = useState("");
+  const [webAccess, setWebAccess] = useState(false);
+  const [holidayRegion, setHolidayRegion] = useState("AT");
 
   const [competencies, setCompetencies] = useState<Competency[]>([]);
   const [compName, setCompName] = useState("");
@@ -86,6 +100,7 @@ export default function SetupPage() {
   const [empName, setEmpName] = useState("");
   const [empPref, setEmpPref] = useState("ANY");
   const [empModel, setEmpModel] = useState("ROTATION_4_4");
+  const [empRole, setEmpRole] = useState("STAFF");
   const [empComps, setEmpComps] = useState<string[]>([]);
 
   const [setupStart, setSetupStart] = useState(() => toISODate(weekStart()));
@@ -107,6 +122,9 @@ export default function SetupPage() {
     const json = await res.json();
     if (!res.ok) throw new Error(json.error ?? "Statusfehler");
     setStatus(json);
+    if (json.step && STEPS.some((s) => s.id === json.step)) {
+      setStep(json.step as StepId);
+    }
     if (json.completed) {
       router.replace("/dienstplan");
     }
@@ -139,6 +157,14 @@ export default function SetupPage() {
     void refreshStatus().catch((e) =>
       setMessage(e instanceof Error ? e.message : "Laden fehlgeschlagen"),
     );
+    void fetch("/api/settings")
+      .then((r) => r.json())
+      .then((s) => {
+        if (s.dbMode) setDbMode(s.dbMode);
+        if (typeof s.webAccess === "boolean") setWebAccess(s.webAccess);
+        if (s.holidayRegion) setHolidayRegion(s.holidayRegion);
+      })
+      .catch(() => undefined);
   }, [refreshStatus]);
 
   useEffect(() => {
@@ -167,6 +193,59 @@ export default function SetupPage() {
       await refreshStatus();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Schritt fehlgeschlagen");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createAdmin(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMessage(null);
+    try {
+      await apiSend("/api/auth/admin", "POST", {
+        username: adminUser,
+        password: adminPass,
+        displayName: adminName || undefined,
+      });
+      await refreshStatus();
+      setMessage("Admin angelegt.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Admin fehlgeschlagen");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveOptions() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await apiSend("/api/settings", "POST", {
+        dbMode,
+        mysqlUrl: dbMode === "mysql" ? mysqlUrl : undefined,
+        webAccess,
+        holidayRegion,
+      });
+      setMessage("Optionen gespeichert.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyCompanyPresets() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await apiSend<{ message: string }>("/api/presets/company", "POST", {});
+      await loadCompetencies();
+      await loadShifts();
+      await refreshStatus();
+      setMessage(res.message);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Preset fehlgeschlagen");
     } finally {
       setBusy(false);
     }
@@ -243,11 +322,14 @@ export default function SetupPage() {
         shiftPreference: empPref,
         dutyModel: empModel,
         employmentType: empModel === "WEEKDAYS" ? "PART_TIME" : "FULL_TIME",
+        role: empRole,
+        allowIntermediateShifts: empRole === "TEAM_LEADER",
         competencyIds: empComps,
         dutyCycleStartDate: setupStart,
       });
       setEmpName("");
       setEmpComps([]);
+      setEmpRole("STAFF");
       await loadEmployees();
       await refreshStatus();
     } catch (err) {
@@ -290,6 +372,38 @@ export default function SetupPage() {
     await refreshStatus();
   }
 
+  async function importPlanFile(file: File) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const res = await apiSend<{
+        created: number;
+        skipped: number;
+        warnings: string[];
+      }>("/api/schedule/import", "POST", {
+        payload,
+        target: "base",
+        replaceRange: true,
+        createMissing: true,
+      });
+      await loadBase();
+      await loadEmployees();
+      await loadShifts();
+      await refreshStatus();
+      setMessage(
+        `Import: ${res.created} Einträge` +
+          (res.skipped ? `, ${res.skipped} übersprungen` : "") +
+          ".",
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Import fehlgeschlagen");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function applyAndFinish() {
     setBusy(true);
     setMessage(null);
@@ -321,10 +435,12 @@ export default function SetupPage() {
   function canNext(): boolean {
     if (!status) return false;
     if (step === "welcome") return true;
+    if (step === "admin") return status.canProceed.admin;
+    if (step === "options") return true;
     if (step === "competencies") return status.canProceed.competencies;
     if (step === "shifts") return status.canProceed.shifts;
     if (step === "employees") return status.canProceed.employees;
-    if (step === "schedule") return status.canProceed.schedule;
+    if (step === "schedule") return true;
     return true;
   }
 
@@ -351,8 +467,8 @@ export default function SetupPage() {
           Willkommen bei Schichtwerk
         </h1>
         <p className="mt-2 max-w-2xl text-[var(--muted)]">
-          Richten Sie Kompetenzen, Schichten, Mitarbeiter und Ihren bestehenden
-          2-Wochen-Dienstplan ein. Danach steht die volle Anwendung bereit.
+          Ersteinrichtung: Admin, Optionen, Kompetenzen, Firmen-Schichten,
+          Mitarbeiter und Ihr aktueller 2-Wochen-Dienstplan.
         </p>
       </div>
 
@@ -385,15 +501,111 @@ export default function SetupPage() {
             Ersteinrichtung
           </h2>
           <ul className="list-disc space-y-2 pl-5 text-sm text-[var(--ink-soft)]">
-            <li>Kompetenzen anlegen (z. B. NSC, A1, SYS)</li>
-            <li>Schichten mit Sollbesetzung definieren</li>
-            <li>Mitarbeiter inkl. Dienstmodell erfassen</li>
-            <li>Bestehenden 2-Wochen-Plan als Startpunkt eintragen</li>
-            <li>Rotation daraus ableiten und fertig</li>
+            <li>Admin-Benutzer für den lokalen Schutz anlegen</li>
+            <li>SQLite (lokal) oder MySQL wählen; Web-Zugriff optional</li>
+            <li>Firmen-Schichten: Tag 06–18, Nacht 18–06, Teamleiter 9h, Teilzeit</li>
+            <li>Mitarbeiter inkl. Teamleiter / Teilzeit erfassen</li>
+            <li>Bestehenden 2-Wochen-Plan eintragen oder importieren</li>
           </ul>
           <p className="mt-4 text-sm text-[var(--muted)]">
-            Die Daten bleiben lokal auf diesem Computer.
+            Danach planen Sie jeweils die nächsten zwei Wochen weiter und
+            berücksichtigen Urlaub & Abwesenheiten.
           </p>
+        </Panel>
+      ) : null}
+
+      {step === "admin" ? (
+        <Panel>
+          <h2 className="mb-3 font-[family-name:var(--font-display)] text-xl">
+            Admin-Benutzer
+          </h2>
+          {status.canProceed.admin ? (
+            <p className="text-sm text-[var(--ok)]">
+              Admin ist angelegt ({status.counts.admins}). Sie können weiter.
+            </p>
+          ) : (
+            <form onSubmit={createAdmin} className="max-w-md space-y-3">
+              <Input
+                label="Anzeigename"
+                value={adminName}
+                onChange={(e) => setAdminName(e.target.value)}
+                placeholder="z. B. Disponent"
+              />
+              <Input
+                label="Benutzername"
+                value={adminUser}
+                onChange={(e) => setAdminUser(e.target.value)}
+                required
+                minLength={3}
+              />
+              <Input
+                label="Passwort"
+                type="password"
+                value={adminPass}
+                onChange={(e) => setAdminPass(e.target.value)}
+                required
+                minLength={6}
+              />
+              <Button type="submit" disabled={busy}>
+                Admin anlegen
+              </Button>
+            </form>
+          )}
+        </Panel>
+      ) : null}
+
+      {step === "options" ? (
+        <Panel>
+          <h2 className="mb-3 font-[family-name:var(--font-display)] text-xl">
+            Laufzeit-Optionen
+          </h2>
+          <div className="grid max-w-xl gap-3">
+            <Select
+              label="Datenbank"
+              value={dbMode}
+              onChange={(e) => setDbMode(e.target.value as "sqlite" | "mysql")}
+            >
+              <option value="sqlite">Onboard SQLite (empfohlen lokal)</option>
+              <option value="mysql">Externe MySQL</option>
+            </Select>
+            {dbMode === "mysql" ? (
+              <Input
+                label="MySQL-URL"
+                placeholder="mysql://user:pass@host:3306/schichtwerk"
+                value={mysqlUrl}
+                onChange={(e) => setMysqlUrl(e.target.value)}
+              />
+            ) : null}
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={webAccess}
+                onChange={(e) => setWebAccess(e.target.checked)}
+              />
+              <span>
+                Web-Zugriff im LAN aktivieren
+                <br />
+                <span className="text-[var(--muted)]">
+                  Standard aus: nur lokal. An: andere PCs im Netzwerk können
+                  zugreifen.
+                </span>
+              </span>
+            </label>
+            <Select
+              label="Feiertage"
+              value={holidayRegion}
+              onChange={(e) => setHolidayRegion(e.target.value)}
+            >
+              <option value="AT">Österreich</option>
+              <option value="DE">Deutschland</option>
+              <option value="DE-BY">Deutschland – Bayern</option>
+              <option value="NONE">Keine</option>
+            </Select>
+            <Button type="button" disabled={busy} onClick={() => void saveOptions()}>
+              Optionen speichern
+            </Button>
+          </div>
         </Panel>
       ) : null}
 
@@ -420,13 +632,21 @@ export default function SetupPage() {
                 Speichern
               </Button>
             </form>
+            <Button
+              className="mt-3"
+              variant="secondary"
+              disabled={busy}
+              onClick={() => void applyCompanyPresets()}
+            >
+              Firmen-Vorlage laden
+            </Button>
           </Panel>
           <Panel>
             <h2 className="mb-3 font-[family-name:var(--font-display)] text-lg">
               Vorhanden ({competencies.length})
             </h2>
             {competencies.length === 0 ? (
-              <EmptyState text="Noch keine Kompetenzen – mindestens eine anlegen." />
+              <EmptyState text="Noch keine Kompetenzen – Vorlage laden oder manuell anlegen." />
             ) : (
               <ul className="space-y-2">
                 {competencies.map((c) => (
@@ -457,105 +677,122 @@ export default function SetupPage() {
       ) : null}
 
       {step === "shifts" ? (
-        <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+        <div className="space-y-4">
           <Panel>
-            <h2 className="mb-3 font-[family-name:var(--font-display)] text-lg">
-              Schicht hinzufügen
-            </h2>
-            <form onSubmit={addShift} className="space-y-3">
-              <Input
-                label="Name"
-                value={shiftName}
-                onChange={(e) => setShiftName(e.target.value)}
-                placeholder="Frühschicht"
-                required
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  label="Beginn"
-                  type="time"
-                  value={shiftStart}
-                  onChange={(e) => setShiftStart(e.target.value)}
-                />
-                <Input
-                  label="Ende"
-                  type="time"
-                  value={shiftEnd}
-                  onChange={(e) => setShiftEnd(e.target.value)}
-                />
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-[family-name:var(--font-display)] text-lg">
+                  Firmen-Schichtsystem
+                </h2>
+                <p className="text-sm text-[var(--muted)]">
+                  Tag 06–18 · Nacht 18–06 · Teamleiter 09–18 (9h) · Teilzeit 09–15
+                </p>
               </div>
-              <Select
-                label="Art"
-                value={shiftKind}
-                onChange={(e) => setShiftKind(e.target.value as ShiftKind)}
-              >
-                <option value="DAY">Tag</option>
-                <option value="NIGHT">Nacht</option>
-                <option value="INTERMEDIATE">Zwischendienst</option>
-              </Select>
-              <Input
-                label="Farbe"
-                type="color"
-                value={shiftColor}
-                onChange={(e) => setShiftColor(e.target.value)}
-              />
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Sollbesetzung</div>
-                {competencies.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between gap-2 text-sm">
-                    <span>{c.name}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={20}
-                      className="w-16 rounded border border-[var(--line)] px-2 py-1"
-                      value={reqCounts[c.id] ?? 0}
-                      onChange={(e) =>
-                        setReqCounts((prev) => ({
-                          ...prev,
-                          [c.id]: Number(e.target.value),
-                        }))
-                      }
-                    />
-                  </div>
-                ))}
-              </div>
-              <Button type="submit" disabled={busy || competencies.length === 0}>
-                Speichern
+              <Button disabled={busy} onClick={() => void applyCompanyPresets()}>
+                Schichten übernehmen
               </Button>
-            </form>
+            </div>
           </Panel>
-          <Panel>
-            <h2 className="mb-3 font-[family-name:var(--font-display)] text-lg">
-              Vorhanden ({shifts.length})
-            </h2>
-            {shifts.length === 0 ? (
-              <EmptyState text="Noch keine Schichten – z. B. Früh- und Nachtschicht anlegen." />
-            ) : (
-              <ul className="space-y-2">
-                {shifts.map((s) => (
-                  <li
-                    key={s.id}
-                    className="flex items-start justify-between gap-2 rounded-md border border-[var(--line)] px-3 py-2"
-                  >
-                    <div>
-                      <div className="font-medium">{s.name}</div>
-                      <div className="text-xs text-[var(--muted)]">
-                        {s.startTime}–{s.endTime} · {s.kind}
-                      </div>
+          <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
+            <Panel>
+              <h2 className="mb-3 font-[family-name:var(--font-display)] text-lg">
+                Schicht hinzufügen
+              </h2>
+              <form onSubmit={addShift} className="space-y-3">
+                <Input
+                  label="Name"
+                  value={shiftName}
+                  onChange={(e) => setShiftName(e.target.value)}
+                  placeholder="Tagschicht"
+                  required
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    label="Beginn"
+                    type="time"
+                    value={shiftStart}
+                    onChange={(e) => setShiftStart(e.target.value)}
+                  />
+                  <Input
+                    label="Ende"
+                    type="time"
+                    value={shiftEnd}
+                    onChange={(e) => setShiftEnd(e.target.value)}
+                  />
+                </div>
+                <Select
+                  label="Art"
+                  value={shiftKind}
+                  onChange={(e) => setShiftKind(e.target.value as ShiftKind)}
+                >
+                  <option value="DAY">Tag</option>
+                  <option value="NIGHT">Nacht</option>
+                  <option value="INTERMEDIATE">Zwischendienst / Teamleiter</option>
+                </Select>
+                <Input
+                  label="Farbe"
+                  type="color"
+                  value={shiftColor}
+                  onChange={(e) => setShiftColor(e.target.value)}
+                />
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Sollbesetzung</div>
+                  {competencies.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between gap-2 text-sm">
+                      <span>{c.name}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={20}
+                        className="w-16 rounded border border-[var(--line)] px-2 py-1"
+                        value={reqCounts[c.id] ?? 0}
+                        onChange={(e) =>
+                          setReqCounts((prev) => ({
+                            ...prev,
+                            [c.id]: Number(e.target.value),
+                          }))
+                        }
+                      />
                     </div>
-                    <button
-                      type="button"
-                      className="text-xs text-[var(--danger)]"
-                      onClick={() => void removeShift(s.id)}
+                  ))}
+                </div>
+                <Button type="submit" disabled={busy || competencies.length === 0}>
+                  Speichern
+                </Button>
+              </form>
+            </Panel>
+            <Panel>
+              <h2 className="mb-3 font-[family-name:var(--font-display)] text-lg">
+                Vorhanden ({shifts.length})
+              </h2>
+              {shifts.length === 0 ? (
+                <EmptyState text="Noch keine Schichten – Firmenvorlage übernehmen." />
+              ) : (
+                <ul className="space-y-2">
+                  {shifts.map((s) => (
+                    <li
+                      key={s.id}
+                      className="flex items-start justify-between gap-2 rounded-md border border-[var(--line)] px-3 py-2"
                     >
-                      Löschen
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Panel>
+                      <div>
+                        <div className="font-medium">{s.name}</div>
+                        <div className="text-xs text-[var(--muted)]">
+                          {s.startTime}–{s.endTime} · {s.kind}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="text-xs text-[var(--danger)]"
+                        onClick={() => void removeShift(s.id)}
+                      >
+                        Löschen
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Panel>
+          </div>
         </div>
       ) : null}
 
@@ -573,12 +810,20 @@ export default function SetupPage() {
                 required
               />
               <Select
+                label="Rolle"
+                value={empRole}
+                onChange={(e) => setEmpRole(e.target.value)}
+              >
+                <option value="STAFF">Mitarbeiter</option>
+                <option value="TEAM_LEADER">Teamleiter (9h Zwischendienst)</option>
+              </Select>
+              <Select
                 label="Dienstmodell"
                 value={empModel}
                 onChange={(e) => setEmpModel(e.target.value)}
               >
-                <option value="ROTATION_4_4">4/4 Wechsel</option>
-                <option value="WEEKDAYS">Mo–Fr Teilzeit</option>
+                <option value="ROTATION_4_4">4/4 Wechsel (Vollzeit)</option>
+                <option value="WEEKDAYS">Mo–Fr Teilzeit (untertags)</option>
               </Select>
               <Select
                 label="Schichtpräferenz"
@@ -588,6 +833,7 @@ export default function SetupPage() {
                 <option value="ANY">Egal</option>
                 <option value="DAY_ONLY">Nur Tag</option>
                 <option value="NIGHT_ONLY">Nur Nacht</option>
+                <option value="ROTATING">Wechselnd</option>
               </Select>
               <div className="space-y-1">
                 <div className="text-sm font-medium">Kompetenzen</div>
@@ -629,6 +875,7 @@ export default function SetupPage() {
                     <div>
                       <div className="font-medium">{e.name}</div>
                       <div className="text-xs text-[var(--muted)]">
+                        {e.role === "TEAM_LEADER" ? "Teamleiter · " : ""}
                         {e.dutyModel} · {e.shiftPreference}
                         {e.competencies?.length
                           ? ` · ${e.competencies.map((c) => c.competency.name).join(", ")}`
@@ -667,10 +914,21 @@ export default function SetupPage() {
               <p className="pb-1.5 text-sm text-[var(--muted)]">
                 {formatDateRange(setupStart, 14)} · {baseEntries.length} Einträge
               </p>
+              <label className="pb-1.5 text-sm">
+                <span className="mr-2 text-[var(--muted)]">JSON importieren</span>
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void importPlanFile(f);
+                  }}
+                />
+              </label>
             </div>
             <p className="mb-4 text-sm text-[var(--ink-soft)]">
-              Tragen Sie hier Ihren bestehenden Dienstplan für zwei Wochen ein.
-              Das ist der Startpunkt für die spätere Rotation.
+              Tragen Sie Ihren aktuellen Dienstplan für zwei Wochen ein – oder
+              importieren Sie einen zuvor exportierten Plan.
             </p>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] border-collapse text-sm">
@@ -766,6 +1024,7 @@ export default function SetupPage() {
             Einrichtung abschließen
           </h2>
           <ul className="mb-4 space-y-1 text-sm text-[var(--ink-soft)]">
+            <li>Admin: {status.counts.admins}</li>
             <li>Kompetenzen: {status.counts.competencies}</li>
             <li>Schichten: {status.counts.shifts}</li>
             <li>Mitarbeiter: {status.counts.employees}</li>
@@ -773,12 +1032,13 @@ export default function SetupPage() {
           </ul>
           <p className="mb-4 text-sm text-[var(--muted)]">
             Beim Abschluss werden aus dem 2-Wochen-Plan die Dienstmodelle
-            (Zyklusstart, Tag/Nacht) abgeleitet. Danach können Sie unter
-            Dienstplan weitere Wochen generieren.
+            abgeleitet. Danach generieren Sie unter Dienstplan die nächsten
+            Wochen und pflegen Urlaub.
           </p>
           <Button
             disabled={
               busy ||
+              !status.canProceed.admin ||
               !status.canProceed.competencies ||
               !status.canProceed.shifts ||
               !status.canProceed.employees
@@ -787,12 +1047,6 @@ export default function SetupPage() {
           >
             Setup abschließen und App öffnen
           </Button>
-          {!status.canProceed.schedule ? (
-            <p className="mt-2 text-xs text-[var(--muted)]">
-              Hinweis: Noch keine Setup-Einträge – Sie können trotzdem abschließen
-              und den Plan später unter Ursprungsplan nachtragen.
-            </p>
-          ) : null}
         </Panel>
       ) : null}
 

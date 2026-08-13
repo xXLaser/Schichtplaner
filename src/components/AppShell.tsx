@@ -10,24 +10,43 @@ type OnboardingStatus = {
   step: string;
 };
 
+type AuthState = {
+  authRequired: boolean;
+  user: { id: string; username: string } | null;
+};
+
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [status, setStatus] = useState<OnboardingStatus | null>(null);
+  const [auth, setAuth] = useState<AuthState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isSetup = pathname === "/setup" || pathname.startsWith("/setup/");
+  const isLogin = pathname === "/login";
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
-        const res = await fetch("/api/onboarding", { cache: "no-store" });
-        const json = await res.json();
-        if (!res.ok) {
-          throw new Error(json.error ?? `Fehler ${res.status}`);
+        const [onboardingRes, authRes] = await Promise.all([
+          fetch("/api/onboarding", { cache: "no-store" }),
+          fetch("/api/auth/me", { cache: "no-store" }),
+        ]);
+        const onboarding = await onboardingRes.json();
+        const authJson = await authRes.json();
+        if (!onboardingRes.ok) {
+          throw new Error(onboarding.error ?? `Fehler ${onboardingRes.status}`);
         }
         if (!cancelled) {
-          setStatus(json);
+          setStatus(onboarding);
+          setAuth(
+            authRes.ok
+              ? {
+                  authRequired: Boolean(authJson.authRequired),
+                  user: authJson.user ?? null,
+                }
+              : { authRequired: false, user: null },
+          );
           setError(null);
         }
       } catch (err) {
@@ -35,6 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           setError(err instanceof Error ? err.message : "Status unbekannt");
           // Bei API-Fehler App nicht blockieren (z. B. alte DB ohne Migration)
           setStatus({ completed: true, step: "done" });
+          setAuth({ authRequired: false, user: null });
         }
       }
     }
@@ -48,13 +68,24 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (!status) return;
     if (!status.completed && !isSetup) {
       router.replace("/setup");
+      return;
     }
     if (status.completed && isSetup) {
       router.replace("/dienstplan");
+      return;
     }
-  }, [status, isSetup, router]);
+    if (
+      status.completed &&
+      auth?.authRequired &&
+      !auth.user &&
+      !isLogin &&
+      !isSetup
+    ) {
+      router.replace("/login");
+    }
+  }, [status, isSetup, isLogin, auth, router]);
 
-  if (!status) {
+  if (!status || !auth) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center text-sm text-[var(--muted)]">
         {error ? error : "Schichtwerk wird geladen…"}
@@ -79,6 +110,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           {isSetup ? children : null}
         </main>
       </>
+    );
+  }
+
+  if (auth.authRequired && !auth.user) {
+    return (
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
+        {isLogin ? children : null}
+      </main>
     );
   }
 

@@ -16,6 +16,10 @@
     "db:restore": "node scripts/db-restore.cjs",
     "db:reset": "prisma migrate reset --force && tsx prisma/seed.ts --force",
     "env:ensure": "node scripts/ensure-env.cjs",
+    "db:use-mysql": "node scripts/switch-db-provider.cjs mysql",
+    "db:use-sqlite": "node scripts/switch-db-provider.cjs sqlite",
+    "test:scheduler": "tsx scripts/test-duty-model.ts",
+    "test:smoke": "tsx scripts/smoke-schedule.ts",
     "postinstall": "prisma generate"
   },
   "prisma": {

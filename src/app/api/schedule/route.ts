@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateSchedule, getSchedule } from "@/lib/scheduler";
 import { z } from "zod";
 import { apiError } from "@/lib/api-error";
+import { holidaysInRange } from "@/lib/holidays";
+import { readRuntimeConfig } from "@/lib/runtime-config";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +18,13 @@ export async function GET(req: NextRequest) {
       );
     }
     const data = await getSchedule(from, to);
-    return NextResponse.json(data);
+    const cfg = readRuntimeConfig();
+    const holidays = holidaysInRange(from, to, cfg.holidayRegion);
+    return NextResponse.json({
+      ...data,
+      holidays,
+      holidayRegion: cfg.holidayRegion,
+    });
   } catch (error) {
     return apiError(error, "Dienstplan konnte nicht geladen werden");
   }

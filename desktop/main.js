@@ -4,16 +4,39 @@ const fs = require("fs");
 const http = require("http");
 const path = require("path");
 
-const PORT = process.env.SCHICHTWERK_PORT || "3847";
-const HOST = "127.0.0.1";
-
 let mainWindow = null;
 let serverProcess = null;
 
-function userDataDbPath() {
+function userDataDir() {
   const dir = path.join(app.getPath("userData"), "data");
   fs.mkdirSync(dir, { recursive: true });
-  return path.join(dir, "dev.db").replace(/\\/g, "/");
+  return dir;
+}
+
+function userDataDbPath() {
+  return path.join(userDataDir(), "dev.db").replace(/\\/g, "/");
+}
+
+function configPath() {
+  return path.join(app.getPath("userData"), "schichtwerk.config.json");
+}
+
+function readConfig() {
+  const defaults = {
+    dbMode: "sqlite",
+    mysqlUrl: "",
+    webAccess: false,
+    port: 3847,
+    holidayRegion: "AT",
+    companyName: "",
+  };
+  try {
+    const file = configPath();
+    if (!fs.existsSync(file)) return defaults;
+    return { ...defaults, ...JSON.parse(fs.readFileSync(file, "utf8")) };
+  } catch {
+    return defaults;
+  }
 }
 
 function appRoot() {
@@ -70,7 +93,7 @@ function startServer(root, env) {
   });
 }
 
-function createWindow() {
+function createWindow(host, port) {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
@@ -84,7 +107,8 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadURL(`http://${HOST}:${PORT}/`);
+  // UI immer über localhost laden (auch wenn Server auf 0.0.0.0 lauscht)
+  mainWindow.loadURL(`http://127.0.0.1:${port}/`);
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -101,33 +125,57 @@ function stopServer() {
 }
 
 async function boot() {
+  const cfg = readConfig();
   const root = appRoot();
   const dbFile = userDataDbPath();
+  const port = String(cfg.port || 3847);
+  const host = cfg.webAccess ? "0.0.0.0" : "127.0.0.1";
+
+  // Config auch unter data/ für die Next-App sichtbar machen
+  try {
+    const appConfig = path.join(userDataDir(), "schichtwerk.config.json");
+    if (!fs.existsSync(appConfig) && fs.existsSync(configPath())) {
+      fs.copyFileSync(configPath(), appConfig);
+    }
+    process.env.SCHICHTWERK_CONFIG = configPath();
+  } catch {
+    /* ignore */
+  }
+
+  let databaseUrl = `file:${dbFile}`;
+  if (cfg.dbMode === "mysql" && cfg.mysqlUrl) {
+    databaseUrl = cfg.mysqlUrl;
+  }
+
   const env = {
     ...process.env,
     NODE_ENV: "production",
-    PORT: String(PORT),
-    HOSTNAME: HOST,
-    DATABASE_URL: `file:${dbFile}`,
+    PORT: port,
+    HOSTNAME: host,
+    DATABASE_URL: databaseUrl,
+    SCHICHTWERK_CONFIG: configPath(),
   };
 
-  const prismaCli = path.join(root, "node_modules", "prisma", "build", "index.js");
-  if (fs.existsSync(prismaCli)) {
-    await new Promise((resolve, reject) => {
-      const mig = runNode([prismaCli, "migrate", "deploy"], {
-        cwd: root,
-        env,
-        stdio: "inherit",
+  // Migrate nur bei SQLite im Desktop-Bundle
+  if (cfg.dbMode !== "mysql") {
+    const prismaCli = path.join(root, "node_modules", "prisma", "build", "index.js");
+    if (fs.existsSync(prismaCli)) {
+      await new Promise((resolve, reject) => {
+        const mig = runNode([prismaCli, "migrate", "deploy"], {
+          cwd: root,
+          env,
+          stdio: "inherit",
+        });
+        mig.on("exit", (code) =>
+          code === 0 ? resolve() : reject(new Error("Migration fehlgeschlagen")),
+        );
       });
-      mig.on("exit", (code) =>
-        code === 0 ? resolve() : reject(new Error("Migration fehlgeschlagen")),
-      );
-    });
+    }
   }
 
   startServer(root, env);
-  await waitForServer(`http://${HOST}:${PORT}/api/health`);
-  createWindow();
+  await waitForServer(`http://127.0.0.1:${port}/api/health`);
+  createWindow(host, port);
 }
 
 const gotLock = app.requestSingleInstanceLock();

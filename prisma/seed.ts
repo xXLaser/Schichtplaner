@@ -312,9 +312,9 @@ async function main() {
 
   const frueh = await prisma.shiftTemplate.create({
     data: {
-      name: "Frühschicht",
+      name: "Tagschicht",
       startTime: "06:00",
-      endTime: "14:00",
+      endTime: "18:00",
       color: "#0f766e",
       sortOrder: 1,
       kind: "DAY",
@@ -332,19 +332,16 @@ async function main() {
 
   const spaet = await prisma.shiftTemplate.create({
     data: {
-      name: "Spätschicht",
-      startTime: "14:00",
-      endTime: "22:00",
+      name: "Teilzeit Tag",
+      startTime: "09:00",
+      endTime: "15:00",
       color: "#0369a1",
       sortOrder: 2,
       kind: "DAY",
       requirements: {
         create: [
-          { competencyId: leitung.id, minCount: 1 },
-          { competencyId: maschine.id, minCount: 2 },
           { competencyId: qs.id, minCount: 1 },
           { competencyId: logistik.id, minCount: 1 },
-          { competencyId: ersteHilfe.id, minCount: 1 },
         ],
       },
     },
@@ -353,9 +350,9 @@ async function main() {
   const nacht = await prisma.shiftTemplate.create({
     data: {
       name: "Nachtschicht",
-      startTime: "22:00",
+      startTime: "18:00",
       endTime: "06:00",
-      color: "#334155",
+      color: "#1e3a5f",
       sortOrder: 3,
       kind: "NIGHT",
       requirements: {
@@ -369,49 +366,46 @@ async function main() {
     },
   });
 
-  const teilzeit = await prisma.shiftTemplate.create({
-    data: {
-      name: "Teilzeit Mo–Fr",
-      startTime: "09:00",
-      endTime: "15:00",
-      color: "#0ea5e9",
-      sortOrder: 4,
-      kind: "DAY",
-      requirements: {
-        create: [
-          { competencyId: qs.id, minCount: 1 },
-          { competencyId: logistik.id, minCount: 1 },
-        ],
-      },
-    },
-  });
+  const teilzeit = spaet; // Teilzeit Tag 09–15
 
   const zwischen = await prisma.shiftTemplate.create({
     data: {
-      name: "Zwischendienst",
-      startTime: "11:00",
-      endTime: "23:00",
-      color: "#7c3aed",
-      sortOrder: 5,
+      name: "Teamleiter (9h)",
+      startTime: "09:00",
+      endTime: "18:00",
+      color: "#b45309",
+      sortOrder: 4,
       kind: "INTERMEDIATE",
       requirements: {
         create: [
-          { competencyId: maschine.id, minCount: 1 },
-          { competencyId: logistik.id, minCount: 1 },
+          { competencyId: leitung.id, minCount: 1 },
         ],
       },
     },
   });
 
   // Teilzeit-Mitarbeiter an Teilzeitschicht koppeln
-  await prisma.employee.update({
-    where: { id: employees[4].id },
-    data: { defaultShiftTemplateId: teilzeit.id },
-  });
-  await prisma.employee.update({
-    where: { id: employees[8].id },
-    data: { defaultShiftTemplateId: teilzeit.id },
-  });
+  const partTimers = employees.filter((e) => e.employmentType === "PART_TIME");
+  for (const emp of partTimers) {
+    await prisma.employee.update({
+      where: { id: emp.id },
+      data: { defaultShiftTemplateId: teilzeit.id },
+    });
+  }
+  // Teamleiter-Beispiel: jemand mit Intermediate-Erlaubnis
+  const tlCandidate =
+    employees.find((e) => e.allowIntermediateShifts && e.name.includes("Paul")) ??
+    employees.find((e) => e.allowIntermediateShifts);
+  if (tlCandidate) {
+    await prisma.employee.update({
+      where: { id: tlCandidate.id },
+      data: {
+        role: "TEAM_LEADER",
+        allowIntermediateShifts: true,
+        defaultShiftTemplateId: zwischen.id,
+      },
+    });
+  }
 
   // Sample absences next week
   const nextMonday = new Date(today);
@@ -454,7 +448,7 @@ async function main() {
   console.log("Seed OK:", {
     competencies: comps.length,
     employees: employees.length,
-    shifts: [frueh.name, spaet.name, nacht.name, teilzeit.name, zwischen.name],
+    shifts: [frueh.name, spaet.name, nacht.name, zwischen.name],
   });
 }
 

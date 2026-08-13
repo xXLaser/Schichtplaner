@@ -7,6 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  displayName  String?
+  role         UserRole @default(ADMIN)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+enum UserRole {
+  ADMIN
+}
+
 model Competency {
   id          String   @id @default(cuid())
   name        String   @unique
@@ -26,6 +40,9 @@ model Employee {
   maxShifts           Int      @default(5)
   vacationDaysPerYear Int      @default(30)
   createdAt           DateTime @default(now())
+
+  /// Teamleiter werden bevorzugt auf Zwischendienste (9h) gesetzt
+  role StaffRole @default(STAFF)
 
   // Schichtpräferenz: fest Tag, fest Nacht, wechselnd (Rotation) oder egal
   shiftPreference   ShiftPreference @default(ANY)
@@ -49,7 +66,7 @@ model Employee {
   partTimeStartTime       String         @default("09:00")
   partTimeEndTime         String         @default("15:00")
   workWeekdays            String         @default("1,2,3,4,5")
-  // Zwischendienste (z. B. 11–23) erlaubt
+  // Zwischendienste (z. B. Teamleiter 09–18) erlaubt
   allowIntermediateShifts Boolean        @default(false)
   defaultShiftTemplateId  String?
 
@@ -58,6 +75,11 @@ model Employee {
   assignments          Assignment[]
   baseScheduleEntries  BaseScheduleEntry[]
   defaultShiftTemplate ShiftTemplate?       @relation("EmployeeDefaultShift", fields: [defaultShiftTemplateId], references: [id], onDelete: SetNull)
+}
+
+enum StaffRole {
+  STAFF
+  TEAM_LEADER
 }
 
 enum EmploymentType {

@@ -1,18 +1,17 @@
 # Schichtwerk – Dienstplan für Schichtbetriebe
 
-Web-App zum Erstellen von Dienstplänen mit:
+Lokales Dienstplan-Tool (optional mit Web-Zugriff) mit Setup-Assistent und portable EXE:
 
-- **Ursprungsdienstplan** – manuelle Basis; die Generierung startet immer davon
-- **Dienstmodelle** – 4 Tage Dienst / 4 frei (Vollzeit), Mo–Fr 9–15 (Teilzeit), optional Zwischendienste
-- **Überstundenpauschale** – einmal im Monat bis zu 5 Dienste in einer Woche (Vollzeit)
-- **Ruhezeit 12 Stunden** – gesetzliche Pause zwischen Diensten (z. B. 11–23 → kein 6–18 am Folgetag)
-- **Mitarbeiter & Kompetenzen** – jeder Person mehrere Fähigkeiten zuweisen
-- **Schichtanforderungen** – einstellen, wie viele Personen je Kompetenz pro Schicht anwesend sein müssen
-- **Schichtpräferenzen** – nur Tag, nur Nacht oder Wechseldienst je Mitarbeiter
-- **Sollstunden** – Zielstunden pro Monat oder Quartal
-- **Nachträgliches Anpassen** – Personen manuell hinzufügen/entfernen
-- **Urlaubsplaner** – Kalender, Resturlaub, Anträge genehmigen
-- **Mobile Nutzung** – Bottom-Navigation, Tag-Ansicht, Homescreen-App
+- **Standalone EXE** – `npm run build:exe` → `release/Schichtwerk.exe`
+- **Ersteinrichtung** – Admin, DB-Option, Kompetenzen, Firmen-Schichten, Mitarbeiter, 2-Wochen-Plan
+- **Firmen-Schichten** – Tag 06–18, Nacht 18–06, Teamleiter 9h (09–18), Teilzeit untertags 09–15
+- **Feiertage** – hervorgehoben (AT / DE / DE-BY)
+- **Export/Import** – Dienstplan als JSON
+- **Datenbank** – Onboard-SQLite oder externe MySQL (`npm run db:use-mysql`)
+- **Web-Zugriff** – optional LAN; Standard nur localhost
+- **Ursprungsdienstplan** – manuelle Basis; Generierung startet davon
+- **Dienstmodelle** – 4/4 Vollzeit, Mo–Fr Teilzeit, Teamleiter-Zwischendienst
+- **Ruhezeit 12 Stunden**, Urlaubsplaner, manuelle Nachbearbeitung
 
 ## Windows-Server – Dauerbetrieb
 
