@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth-constants";
-import { parseSessionToken } from "@/lib/auth";
+import { parseSessionToken } from "@/lib/auth-session";
 
 const PUBLIC_PATHS = [
   "/login",

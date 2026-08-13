@@ -1,16 +1,10 @@
 import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE } from "./auth-constants";
+import { parseSessionToken, sessionSecret } from "./auth-session";
 import { prisma } from "./prisma";
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-function sessionSecret(): string {
-  return (
-    process.env.SESSION_SECRET ??
-    process.env.DATABASE_URL ??
-    "schichtwerk-local-dev-secret"
-  );
-}
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -43,26 +37,8 @@ function signSession(payload: SessionPayload): string {
   return `${body}.${sig}`;
 }
 
-function parseSession(token: string): SessionPayload | null {
-  const [body, sig] = token.split(".");
-  if (!body || !sig) return null;
-  const expected = createHmac("sha256", sessionSecret())
-    .update(body)
-    .digest("base64url");
-  try {
-    if (!timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
-  } catch {
-    return null;
-  }
-  try {
-    const payload = JSON.parse(
-      Buffer.from(body, "base64url").toString("utf8"),
-    ) as SessionPayload;
-    if (!payload.userId || !payload.exp || Date.now() > payload.exp) return null;
-    return payload;
-  } catch {
-    return null;
-  }
+function parseSession(token: string) {
+  return parseSessionToken(token);
 }
 
 export async function createSession(userId: string, username: string) {
@@ -138,28 +114,4 @@ export async function authenticateUser(username: string, password: string) {
     username: user.username,
     displayName: user.displayName,
   };
-}
-
-export function parseSessionToken(token: string): { userId: string; exp: number } | null {
-  const [body, sig] = token.split(".");
-  if (!body || !sig) return null;
-  const secret =
-    process.env.SESSION_SECRET ??
-    process.env.DATABASE_URL ??
-    "schichtwerk-local-dev-secret";
-  const expected = createHmac("sha256", secret).update(body).digest("base64url");
-  try {
-    if (!timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
-  } catch {
-    return null;
-  }
-  try {
-    const payload = JSON.parse(
-      Buffer.from(body, "base64url").toString("utf8"),
-    ) as { userId: string; exp: number };
-    if (!payload.userId || !payload.exp || Date.now() > payload.exp) return null;
-    return payload;
-  } catch {
-    return null;
-  }
 }

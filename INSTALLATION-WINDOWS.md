@@ -15,7 +15,7 @@ Sie brauchen **keine Programmierkenntnisse** – folgen Sie einfach der Reihe na
 3. Doppelklick auf `Schichtwerk.exe` – die App startet lokal.
 4. Beim ersten Start erscheint der **Setup-Assistent** (Administrator, Kompetenzen, Schichten, Mitarbeiter, 2-Wochen-Plan).
 
-**Datenbank:** `%LOCALAPPDATA%\schichtwerk-desktop\data\dev.db`
+> **Falls die EXE nicht startet:** In `%LOCALAPPDATA%\schichtwerk-desktop\schichtwerk-start.log` steht die Ursache. Windows Defender kann den ersten Start verzögern – die Datei ggf. als vertrauenswürdig zulassen.
 
 > Falls noch keine Release-Datei vorhanden ist: Ein Maintainer muss einmalig den GitHub-Workflow **„Windows EXE bauen“** starten (Actions → Run workflow) oder einen Versions-Tag setzen (z. B. `v0.2.0`). Danach steht die EXE zum Download bereit.
 
