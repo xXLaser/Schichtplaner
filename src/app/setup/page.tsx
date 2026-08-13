@@ -11,6 +11,7 @@ import { toISODate, weekStart, formatDateRange } from "@/lib/dates";
 type OnboardingStatus = {
   completed: boolean;
   step: string;
+  hasAdmin: boolean;
   counts: {
     competencies: number;
     shifts: number;
@@ -54,6 +55,7 @@ type BaseEntry = {
 
 const STEPS = [
   { id: "welcome", label: "Start" },
+  { id: "admin", label: "Administrator" },
   { id: "competencies", label: "Kompetenzen" },
   { id: "shifts", label: "Schichten" },
   { id: "employees", label: "Mitarbeiter" },
@@ -85,6 +87,7 @@ export default function SetupPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [empName, setEmpName] = useState("");
   const [empPref, setEmpPref] = useState("ANY");
+  const [empRole, setEmpRole] = useState("STAFF");
   const [empModel, setEmpModel] = useState("ROTATION_4_4");
   const [empComps, setEmpComps] = useState<string[]>([]);
 
@@ -92,6 +95,13 @@ export default function SetupPage() {
   const [baseEntries, setBaseEntries] = useState<BaseEntry[]>([]);
   const [pickEmp, setPickEmp] = useState("");
   const [adding, setAdding] = useState<string | null>(null);
+
+  const [adminUser, setAdminUser] = useState("");
+  const [adminPass, setAdminPass] = useState("");
+  const [adminPass2, setAdminPass2] = useState("");
+  const [adminName, setAdminName] = useState("");
+
+  const [importCsv, setImportCsv] = useState("");
 
   const setupEnd = useMemo(
     () => toISODate(addDays(new Date(setupStart + "T00:00:00"), 13)),
@@ -172,6 +182,82 @@ export default function SetupPage() {
     }
   }
 
+  async function createAdmin(e: FormEvent) {
+    e.preventDefault();
+    if (adminPass !== adminPass2) {
+      setMessage("Passwörter stimmen nicht überein.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiSend("/api/auth", "POST", {
+        action: "createAdmin",
+        username: adminUser,
+        password: adminPass,
+        displayName: adminName || undefined,
+      });
+      await goTo("competencies");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Admin konnte nicht angelegt werden");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadCompanyTemplate() {
+    if (
+      shifts.length > 0 &&
+      !confirm("Bestehende Schichten überschreiben und Firmenvorlage laden?")
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      await apiSend("/api/onboarding/template", "POST", {
+        action: "loadCompanyTemplate",
+        replace: shifts.length > 0,
+      });
+      await loadCompetencies();
+      await loadShifts();
+      await refreshStatus();
+      setMessage("Firmenvorlage geladen: Tagschicht 6–18, Nacht 18–6, Teamleiter, Teilzeit.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Vorlage konnte nicht geladen werden");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importScheduleCsv() {
+    if (!importCsv.trim()) return;
+    setBusy(true);
+    try {
+      const result = await apiSend<{ imported: number; warnings: string[] }>(
+        "/api/schedule/import",
+        "POST",
+        {
+          type: "base",
+          format: "csv",
+          data: importCsv,
+          replaceRange: true,
+          from: setupStart,
+          to: setupEnd,
+        },
+      );
+      setImportCsv("");
+      await loadBase();
+      await refreshStatus();
+      setMessage(
+        `${result.imported} Einträge importiert` +
+          (result.warnings?.length ? ` · ${result.warnings.length} Hinweise` : ""),
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Import fehlgeschlagen");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function addCompetency(e: FormEvent) {
     e.preventDefault();
     if (!compName.trim()) return;
@@ -243,11 +329,14 @@ export default function SetupPage() {
         shiftPreference: empPref,
         dutyModel: empModel,
         employmentType: empModel === "WEEKDAYS" ? "PART_TIME" : "FULL_TIME",
+        role: empRole,
+        allowIntermediateShifts: empRole === "TEAM_LEADER",
         competencyIds: empComps,
         dutyCycleStartDate: setupStart,
       });
       setEmpName("");
       setEmpComps([]);
+      setEmpRole("STAFF");
       await loadEmployees();
       await refreshStatus();
     } catch (err) {
@@ -321,6 +410,7 @@ export default function SetupPage() {
   function canNext(): boolean {
     if (!status) return false;
     if (step === "welcome") return true;
+    if (step === "admin") return status.hasAdmin;
     if (step === "competencies") return status.canProceed.competencies;
     if (step === "shifts") return status.canProceed.shifts;
     if (step === "employees") return status.canProceed.employees;
@@ -385,15 +475,63 @@ export default function SetupPage() {
             Ersteinrichtung
           </h2>
           <ul className="list-disc space-y-2 pl-5 text-sm text-[var(--ink-soft)]">
-            <li>Kompetenzen anlegen (z. B. NSC, A1, SYS)</li>
-            <li>Schichten mit Sollbesetzung definieren</li>
+            <li>Administrator-Konto anlegen</li>
+            <li>Kompetenzen anlegen (z. B. NSC, A1, SYS) oder Firmenvorlage laden</li>
+            <li>Schichten mit Sollbesetzung definieren (Tag 6–18, Nacht 18–6)</li>
             <li>Mitarbeiter inkl. Dienstmodell erfassen</li>
-            <li>Bestehenden 2-Wochen-Plan als Startpunkt eintragen</li>
+            <li>Bestehenden 2-Wochen-Plan eintragen oder importieren</li>
             <li>Rotation daraus ableiten und fertig</li>
           </ul>
           <p className="mt-4 text-sm text-[var(--muted)]">
-            Die Daten bleiben lokal auf diesem Computer.
+            Die Daten bleiben lokal auf diesem Computer. Optional: externe MySQL
+            und Netzwerkzugriff unter Einstellungen.
           </p>
+        </Panel>
+      ) : null}
+
+      {step === "admin" ? (
+        <Panel>
+          <h2 className="mb-3 font-[family-name:var(--font-display)] text-xl">
+            Administrator anlegen
+          </h2>
+          {status.hasAdmin ? (
+            <p className="text-sm text-[var(--ink-soft)]">
+              Ein Administrator ist bereits angelegt. Sie können fortfahren.
+            </p>
+          ) : (
+            <form onSubmit={createAdmin} className="mx-auto max-w-md space-y-3">
+              <Input
+                label="Benutzername"
+                value={adminUser}
+                onChange={(e) => setAdminUser(e.target.value)}
+                required
+              />
+              <Input
+                label="Anzeigename (optional)"
+                value={adminName}
+                onChange={(e) => setAdminName(e.target.value)}
+              />
+              <Input
+                label="Passwort"
+                type="password"
+                value={adminPass}
+                onChange={(e) => setAdminPass(e.target.value)}
+                minLength={8}
+                required
+              />
+              <Input
+                label="Passwort wiederholen"
+                type="password"
+                value={adminPass2}
+                onChange={(e) => setAdminPass2(e.target.value)}
+                minLength={8}
+                required
+              />
+              <Button type="submit" disabled={busy}>
+                Administrator erstellen
+              </Button>
+            </form>
+          )}
         </Panel>
       ) : null}
 
@@ -457,6 +595,18 @@ export default function SetupPage() {
       ) : null}
 
       {step === "shifts" ? (
+        <div className="space-y-4">
+          <Panel>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-[var(--ink-soft)]">
+                Firmenvorlage: Tagschicht 06–18, Nachtschicht 18–06, Teamleiter
+                Zwischendienst 09–18 (9h), Teilzeit 09–15.
+              </p>
+              <Button variant="secondary" disabled={busy} onClick={() => void loadCompanyTemplate()}>
+                Firmenvorlage laden
+              </Button>
+            </div>
+          </Panel>
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
           <Panel>
             <h2 className="mb-3 font-[family-name:var(--font-display)] text-lg">
@@ -557,6 +707,7 @@ export default function SetupPage() {
             )}
           </Panel>
         </div>
+        </div>
       ) : null}
 
       {step === "employees" ? (
@@ -579,6 +730,14 @@ export default function SetupPage() {
               >
                 <option value="ROTATION_4_4">4/4 Wechsel</option>
                 <option value="WEEKDAYS">Mo–Fr Teilzeit</option>
+              </Select>
+              <Select
+                label="Rolle"
+                value={empRole}
+                onChange={(e) => setEmpRole(e.target.value)}
+              >
+                <option value="STAFF">Mitarbeiter</option>
+                <option value="TEAM_LEADER">Teamleiter (9h Ruhezeit)</option>
               </Select>
               <Select
                 label="Schichtpräferenz"
@@ -669,9 +828,27 @@ export default function SetupPage() {
               </p>
             </div>
             <p className="mb-4 text-sm text-[var(--ink-soft)]">
-              Tragen Sie hier Ihren bestehenden Dienstplan für zwei Wochen ein.
-              Das ist der Startpunkt für die spätere Rotation.
+              Tragen Sie hier Ihren bestehenden Dienstplan für zwei Wochen ein
+              oder importieren Sie eine CSV-Datei (Spalten: Datum, Schicht,
+              Mitarbeiter, Kompetenz).
             </p>
+            <div className="mb-4 space-y-2">
+              <label className="text-sm font-medium">CSV-Import</label>
+              <textarea
+                className="w-full rounded-md border border-[var(--line)] p-2 font-mono text-xs"
+                rows={4}
+                placeholder="Datum,Schicht,Mitarbeiter,Kompetenz&#10;2026-08-13,Tagschicht,Max Mustermann,Schichtleitung"
+                value={importCsv}
+                onChange={(e) => setImportCsv(e.target.value)}
+              />
+              <Button
+                variant="secondary"
+                disabled={busy || !importCsv.trim()}
+                onClick={() => void importScheduleCsv()}
+              >
+                CSV importieren
+              </Button>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] border-collapse text-sm">
                 <thead>

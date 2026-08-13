@@ -18,11 +18,22 @@ model Competency {
   requirements ShiftRequirement[]
 }
 
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  displayName  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model Employee {
   id                  String   @id @default(cuid())
   name                String
   email               String?
   active              Boolean  @default(true)
+  role                EmployeeRole @default(STAFF)
+  minRestHours        Int      @default(12)
   maxShifts           Int      @default(5)
   vacationDaysPerYear Int      @default(30)
   createdAt           DateTime @default(now())
@@ -63,6 +74,11 @@ model Employee {
 enum EmploymentType {
   FULL_TIME
   PART_TIME
+}
+
+enum EmployeeRole {
+  STAFF
+  TEAM_LEADER
 }
 
 enum DutyModel {

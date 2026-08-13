@@ -1,10 +1,12 @@
 import { prisma } from "./prisma";
+import { hasAnyUser } from "./auth";
 
 export const ONBOARDING_COMPLETED_KEY = "onboarding.completed";
 export const ONBOARDING_STEP_KEY = "onboarding.step";
 
 export type OnboardingStep =
   | "welcome"
+  | "admin"
   | "competencies"
   | "shifts"
   | "employees"
@@ -14,6 +16,7 @@ export type OnboardingStep =
 
 export const ONBOARDING_STEPS: OnboardingStep[] = [
   "welcome",
+  "admin",
   "competencies",
   "shifts",
   "employees",
@@ -25,6 +28,7 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
 export type OnboardingStatus = {
   completed: boolean;
   step: OnboardingStep;
+  hasAdmin: boolean;
   counts: {
     competencies: number;
     shifts: number;
@@ -72,12 +76,14 @@ function parseStep(value: string | null): OnboardingStep {
 /** Status lesen; bestehende Installationen mit Daten werden automatisch abgeschlossen. */
 export async function getOnboardingStatus(): Promise<OnboardingStatus> {
   const counts = await getCounts();
+  const hasAdmin = await hasAnyUser();
   const flag = await getSetting(ONBOARDING_COMPLETED_KEY);
 
   if (flag === "true") {
     return {
       completed: true,
       step: "done",
+      hasAdmin,
       counts,
       canProceed: {
         competencies: counts.competencies >= 1,
@@ -93,7 +99,8 @@ export async function getOnboardingStatus(): Promise<OnboardingStatus> {
     const step = parseStep(await getSetting(ONBOARDING_STEP_KEY));
     return {
       completed: false,
-      step,
+      step: !hasAdmin && step !== "admin" ? "admin" : step,
+      hasAdmin,
       counts,
       canProceed: {
         competencies: counts.competencies >= 1,
@@ -114,6 +121,7 @@ export async function getOnboardingStatus(): Promise<OnboardingStatus> {
     return {
       completed: true,
       step: "done",
+      hasAdmin,
       counts,
       canProceed: {
         competencies: true,
@@ -127,7 +135,8 @@ export async function getOnboardingStatus(): Promise<OnboardingStatus> {
   const step = parseStep(await getSetting(ONBOARDING_STEP_KEY));
   return {
     completed: false,
-    step,
+    step: !hasAdmin ? "admin" : step,
+    hasAdmin,
     counts,
     canProceed: {
       competencies: counts.competencies >= 1,
@@ -145,6 +154,9 @@ export async function setOnboardingStep(step: OnboardingStep): Promise<Onboardin
 
 export async function completeOnboarding(): Promise<OnboardingStatus> {
   const status = await getOnboardingStatus();
+  if (!status.hasAdmin) {
+    throw new Error("Bitte legen Sie zuerst einen Administrator an.");
+  }
   if (!status.canProceed.competencies) {
     throw new Error("Mindestens eine Kompetenz ist erforderlich.");
   }

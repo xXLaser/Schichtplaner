@@ -25,6 +25,7 @@ const bodySchema = z.object({
   step: z
     .enum([
       "welcome",
+      "admin",
       "competencies",
       "shifts",
       "employees",

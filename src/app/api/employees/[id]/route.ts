@@ -29,6 +29,8 @@ const schema = z.object({
   workWeekdays: z.string().optional(),
   allowIntermediateShifts: z.boolean().optional(),
   defaultShiftTemplateId: z.string().optional().nullable(),
+  role: z.enum(["STAFF", "TEAM_LEADER"]).optional(),
+  minRestHours: z.number().int().min(6).max(24).optional(),
 });
 
 export async function PATCH(
@@ -89,6 +91,8 @@ export async function PATCH(
         partTimeEndTime: body.partTimeEndTime,
         workWeekdays: body.workWeekdays,
         allowIntermediateShifts: body.allowIntermediateShifts,
+        role: body.role,
+        minRestHours: body.minRestHours,
         defaultShiftTemplateId:
           body.defaultShiftTemplateId === undefined
             ? undefined

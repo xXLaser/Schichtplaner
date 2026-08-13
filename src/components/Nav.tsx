@@ -16,6 +16,7 @@ const moreLinks = [
   { href: "/kompetenzen", label: "Kompetenzen" },
   { href: "/schichten", label: "Schichten" },
   { href: "/stunden", label: "Stunden" },
+  { href: "/einstellungen", label: "Einstellungen" },
 ];
 
 export function Nav() {
@@ -37,7 +38,17 @@ export function Nav() {
     { href: "/schichten", label: "Schichten" },
     { href: "/abwesenheiten", label: "Abwesenheiten" },
     { href: "/stunden", label: "Stunden" },
+    { href: "/einstellungen", label: "Einstellungen" },
   ];
+
+  async function logout() {
+    await fetch("/api/auth", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "logout" }),
+    });
+    window.location.href = "/login";
+  }
 
   function isActive(href: string) {
     return pathname === href || pathname.startsWith(href + "/");
@@ -74,7 +85,15 @@ export function Nav() {
           </nav>
 
           {/* Tablet/mobile top menu button */}
-          <button
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void logout()}
+              className="hidden sm:inline-flex rounded-md border border-[var(--line)] px-2.5 py-1.5 text-xs text-[var(--muted)] hover:bg-[var(--surface-2)]"
+            >
+              Abmelden
+            </button>
+            <button
             type="button"
             className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-md border border-[var(--line)] bg-white text-[var(--ink)]"
             aria-label="Menü"
@@ -82,6 +101,7 @@ export function Nav() {
           >
             <span className="text-lg leading-none">{open ? "✕" : "☰"}</span>
           </button>
+          </div>
         </div>
 
         {open ? (

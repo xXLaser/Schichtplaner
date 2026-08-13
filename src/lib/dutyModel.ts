@@ -8,8 +8,10 @@ import {
   startOfDay,
 } from "date-fns";
 
-/** Gesetzliche Mindestruhezeit zwischen zwei Diensten (Stunden). */
+/** Gesetzliche Mindestruhezeit zwischen zwei Diensten (Stunden) – Standard. */
 export const MIN_REST_HOURS = 12;
+
+export type EmployeeRole = "STAFF" | "TEAM_LEADER";
 
 export type DutyModel = "ROTATION_4_4" | "WEEKDAYS" | "CUSTOM";
 export type EmploymentType = "FULL_TIME" | "PART_TIME";
@@ -28,7 +30,18 @@ export type DutyModelConfig = {
   allowIntermediateShifts: boolean;
   defaultShiftTemplateId: string | null;
   maxShifts: number;
+  role?: EmployeeRole;
+  minRestHours?: number;
 };
+
+/** Individuelle Mindestruhezeit (Teamleiter: 9h, sonst 12h). */
+export function getMinRestHours(employee: DutyModelConfig): number {
+  if (employee.minRestHours && employee.minRestHours > 0) {
+    return employee.minRestHours;
+  }
+  if (employee.role === "TEAM_LEADER") return 9;
+  return MIN_REST_HOURS;
+}
 
 export type ShiftTimes = {
   startTime: string;

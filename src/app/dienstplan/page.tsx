@@ -63,6 +63,7 @@ type ScheduleData = {
   absences: Absence[];
   competencies: Competency[];
   employees: EmployeeOption[];
+  holidays?: { date: string; name: string }[];
 };
 
 export default function DienstplanPage() {
@@ -77,8 +78,24 @@ export default function DienstplanPage() {
   const [addingCell, setAddingCell] = useState<string | null>(null);
   const [pickEmployeeId, setPickEmployeeId] = useState("");
   const [busyCell, setBusyCell] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const end = useMemo(() => toISODate(addDays(new Date(week + "T00:00:00"), 6)), [week]);
+
+  const holidayMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const h of data?.holidays ?? []) {
+      map.set(h.date, h.name);
+    }
+    return map;
+  }, [data?.holidays]);
+
+  function dayHeaderClass(day: string) {
+    if (holidayMap.has(day)) {
+      return "bg-amber-50 text-amber-900";
+    }
+    return "";
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -110,6 +127,46 @@ export default function DienstplanPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function exportSchedule(format: "csv" | "json") {
+    window.open(
+      `/api/schedule/export?from=${week}&to=${end}&format=${format}`,
+      "_blank",
+    );
+  }
+
+  async function importSchedule(file: File) {
+    setImporting(true);
+    setMessage(null);
+    try {
+      const text = await file.text();
+      const format = file.name.endsWith(".json") ? "json" : "csv";
+      const body =
+        format === "json"
+          ? { format: "json" as const, data: JSON.parse(text) }
+          : { format: "csv" as const, data: text };
+      const result = await apiSend<{ imported: number; warnings: string[] }>(
+        "/api/schedule/import",
+        "POST",
+        {
+          ...body,
+          type: "assignments",
+          replaceRange: true,
+          from: week,
+          to: end,
+        },
+      );
+      setMessage(
+        `${result.imported} Einträge importiert` +
+          (result.warnings?.length ? ` · ${result.warnings.length} Hinweise` : ""),
+      );
+      await load();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Import fehlgeschlagen");
+    } finally {
+      setImporting(false);
+    }
+  }
 
   async function generate() {
     setGenerating(true);
@@ -301,9 +358,29 @@ export default function DienstplanPage() {
     <div className="animate-fade-up">
       <PageHeader
         title="Dienstplan"
-        subtitle="Basiert auf dem Ursprungsdienstplan; Abwesenheiten, Dienstmodelle und 12-Stunden-Ruhezeit werden automatisch beachtet."
+        subtitle="Basiert auf dem Ursprungsdienstplan; Abwesenheiten, Dienstmodelle und Ruhezeiten (12h / Teamleiter 9h) werden automatisch beachtet. Feiertage sind hervorgehoben."
         actions={
           <>
+            <Button variant="secondary" onClick={() => exportSchedule("csv")}>
+              CSV Export
+            </Button>
+            <Button variant="secondary" onClick={() => exportSchedule("json")}>
+              JSON Export
+            </Button>
+            <label className="inline-flex cursor-pointer items-center rounded-md border border-[var(--line)] bg-white px-3 py-2 text-sm font-medium text-[var(--ink)] hover:bg-[var(--surface-2)]">
+              {importing ? "Import…" : "Import"}
+              <input
+                type="file"
+                accept=".csv,.json"
+                className="hidden"
+                disabled={importing}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void importSchedule(file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
             <Button
               variant="secondary"
               onClick={() =>
@@ -401,8 +478,11 @@ export default function DienstplanPage() {
                   className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium ${
                     mobileDay === d
                       ? "bg-[var(--accent)] text-white"
-                      : "bg-[var(--surface)] border border-[var(--line)] text-[var(--ink-soft)]"
+                      : holidayMap.has(d)
+                        ? "bg-amber-100 border border-amber-300 text-amber-900"
+                        : "bg-[var(--surface)] border border-[var(--line)] text-[var(--ink-soft)]"
                   }`}
+                  title={holidayMap.get(d)}
                 >
                   {formatDayLabel(d)}
                 </button>
@@ -473,9 +553,15 @@ export default function DienstplanPage() {
                   {data.days.map((d) => (
                     <th
                       key={d}
-                      className="min-w-[160px] px-3 py-3 text-left font-semibold text-[var(--ink)]"
+                      className={`min-w-[160px] px-3 py-3 text-left font-semibold text-[var(--ink)] ${dayHeaderClass(d)}`}
+                      title={holidayMap.get(d) ?? undefined}
                     >
                       {formatDayLabel(d)}
+                      {holidayMap.has(d) ? (
+                        <div className="text-[10px] font-normal text-amber-700">
+                          {holidayMap.get(d)}
+                        </div>
+                      ) : null}
                     </th>
                   ))}
                 </tr>

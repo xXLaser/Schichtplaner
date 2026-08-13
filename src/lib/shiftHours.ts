@@ -133,24 +133,52 @@ export async function getHoursReport(reference: Date): Promise<HoursReportEntry[
     orderBy: { name: "asc" },
   });
 
-  const entries: HoursReportEntry[] = [];
+  if (employees.length === 0) return [];
 
+  const boundsByPeriod = new Map<string, { start: Date; end: Date }>();
   for (const emp of employees) {
+    const key = emp.hoursPeriod;
+    if (!boundsByPeriod.has(key)) {
+      boundsByPeriod.set(key, periodBounds(reference, emp.hoursPeriod));
+    }
+  }
+
+  const earliest = [...boundsByPeriod.values()].reduce(
+    (min, b) => (b.start < min ? b.start : min),
+    reference,
+  );
+  const latest = [...boundsByPeriod.values()].reduce(
+    (max, b) => (b.end > max ? b.end : max),
+    reference,
+  );
+
+  const allAssignments = await prisma.assignment.findMany({
+    where: {
+      employeeId: { in: employees.map((e) => e.id) },
+      date: { gte: earliest, lte: addDays(latest, 1) },
+    },
+    include: { shiftTemplate: true },
+  });
+
+  const byEmployee = new Map<string, typeof allAssignments>();
+  for (const a of allAssignments) {
+    const list = byEmployee.get(a.employeeId) ?? [];
+    list.push(a);
+    byEmployee.set(a.employeeId, list);
+  }
+
+  return employees.map((emp) => {
     const { start, end } = periodBounds(reference, emp.hoursPeriod);
-    const assignments = await prisma.assignment.findMany({
-      where: {
-        employeeId: emp.id,
-        date: { gte: start, lte: addDays(end, 1) },
-      },
-      include: { shiftTemplate: true },
-    });
+    const assignments = (byEmployee.get(emp.id) ?? []).filter(
+      (a) => a.date >= start && a.date <= addDays(end, 1),
+    );
     const workedHours = assignments.reduce(
       (sum, a) =>
         sum + shiftDurationHours(a.shiftTemplate.startTime, a.shiftTemplate.endTime),
       0,
     );
 
-    entries.push({
+    return {
       employeeId: emp.id,
       name: emp.name,
       hoursPeriod: emp.hoursPeriod,
@@ -159,8 +187,6 @@ export async function getHoursReport(reference: Date): Promise<HoursReportEntry[
       workedHours,
       remainingHours: emp.targetHours != null ? emp.targetHours - workedHours : null,
       shiftPreference: emp.shiftPreference,
-    });
-  }
-
-  return entries;
+    };
+  });
 }

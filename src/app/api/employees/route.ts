@@ -46,6 +46,8 @@ const schema = z.object({
   workWeekdays: z.string().optional(),
   allowIntermediateShifts: z.boolean().optional(),
   defaultShiftTemplateId: z.string().optional().nullable(),
+  role: z.enum(["STAFF", "TEAM_LEADER"]).optional(),
+  minRestHours: z.number().int().min(6).max(24).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -78,8 +80,14 @@ export async function POST(req: NextRequest) {
         partTimeStartTime: body.partTimeStartTime ?? "09:00",
         partTimeEndTime: body.partTimeEndTime ?? "15:00",
         workWeekdays: body.workWeekdays ?? "1,2,3,4,5",
-        allowIntermediateShifts: body.allowIntermediateShifts ?? false,
+        allowIntermediateShifts:
+          body.allowIntermediateShifts ??
+          body.role === "TEAM_LEADER",
         defaultShiftTemplateId: body.defaultShiftTemplateId || null,
+        role: body.role ?? "STAFF",
+        minRestHours:
+          body.minRestHours ??
+          (body.role === "TEAM_LEADER" ? 9 : 12),
         competencies: body.competencyIds
           ? {
               create: body.competencyIds.map((competencyId) => ({

@@ -7,9 +7,9 @@ import {
   startOfDay,
   subDays,
 } from "date-fns";
+import { holidaysInRange } from "./holidays";
 import { prisma } from "./prisma";
 import {
-  periodBounds,
   periodKeyFor,
   preferenceAllowsShift,
   shiftDurationHours,
@@ -17,6 +17,7 @@ import {
 } from "./shiftHours";
 import {
   canTakeAnotherShiftThisWeek,
+  getMinRestHours,
   isDutyDay,
   markFifthShiftWeek,
   MIN_REST_HOURS,
@@ -55,6 +56,10 @@ type EmployeeWithSkills = DutyModelConfig & {
   rotationStartKind: ShiftKind;
   targetHours: number | null;
   hoursPeriod: "MONTH" | "QUARTER";
+  role: "STAFF" | "TEAM_LEADER";
+  minRestHours: number;
+  employmentType: EmploymentType;
+  dutyModel: DutyModel;
 };
 
 function dayKey(d: Date): string {
@@ -90,6 +95,8 @@ function toDutyConfig(e: {
   allowIntermediateShifts: boolean;
   defaultShiftTemplateId: string | null;
   maxShifts: number;
+  role?: "STAFF" | "TEAM_LEADER";
+  minRestHours?: number;
 }): DutyModelConfig {
   return {
     employmentType: e.employmentType,
@@ -104,6 +111,9 @@ function toDutyConfig(e: {
     allowIntermediateShifts: e.allowIntermediateShifts,
     defaultShiftTemplateId: e.defaultShiftTemplateId,
     maxShifts: e.maxShifts,
+    role: e.role ?? "STAFF",
+    minRestHours:
+      e.minRestHours ?? (e.role === "TEAM_LEADER" ? 9 : MIN_REST_HOURS),
   };
 }
 
@@ -114,27 +124,42 @@ class HoursTracker {
     return `${employeeId}|${periodKey}`;
   }
 
-  async hoursSoFar(employee: EmployeeWithSkills, day: Date): Promise<number> {
-    const periodKey = periodKeyFor(day, employee.hoursPeriod);
-    const key = this.cacheKey(employee.id, periodKey);
-    if (this.cache.has(key)) return this.cache.get(key)!;
+  /** Alle Stunden für den Zeitraum in einem Query vorladen. */
+  preload(
+    employees: EmployeeWithSkills[],
+    assignments: {
+      employeeId: string;
+      date: Date;
+      shiftTemplate: { startTime: string; endTime: string };
+    }[],
+  ) {
+    for (const emp of employees) {
+      const periodKeys = new Set<string>();
+      for (const a of assignments) {
+        if (a.employeeId !== emp.id) continue;
+        periodKeys.add(periodKeyFor(a.date, emp.hoursPeriod));
+      }
+      for (const pk of periodKeys) {
+        const key = this.cacheKey(emp.id, pk);
+        if (!this.cache.has(key)) this.cache.set(key, 0);
+      }
+    }
+    for (const a of assignments) {
+      const emp = employees.find((e) => e.id === a.employeeId);
+      if (!emp) continue;
+      const pk = periodKeyFor(a.date, emp.hoursPeriod);
+      const key = this.cacheKey(emp.id, pk);
+      const hours = shiftDurationHours(
+        a.shiftTemplate.startTime,
+        a.shiftTemplate.endTime,
+      );
+      this.cache.set(key, (this.cache.get(key) ?? 0) + hours);
+    }
+  }
 
-    const { start, end } = periodBounds(day, employee.hoursPeriod);
-    const assignments = await prisma.assignment.findMany({
-      where: {
-        employeeId: employee.id,
-        date: { gte: start, lte: addDays(end, 1) },
-      },
-      include: { shiftTemplate: true },
-    });
-    const hours = assignments.reduce(
-      (sum, a) =>
-        sum +
-        shiftDurationHours(a.shiftTemplate.startTime, a.shiftTemplate.endTime),
-      0,
-    );
-    this.cache.set(key, hours);
-    return hours;
+  hoursSoFar(employee: EmployeeWithSkills, day: Date): number {
+    const periodKey = periodKeyFor(day, employee.hoursPeriod);
+    return this.cache.get(this.cacheKey(employee.id, periodKey)) ?? 0;
   }
 
   addHours(employee: EmployeeWithSkills, day: Date, hours: number) {
@@ -144,8 +169,7 @@ class HoursTracker {
   }
 
   getCached(employee: EmployeeWithSkills, day: Date): number {
-    const periodKey = periodKeyFor(day, employee.hoursPeriod);
-    return this.cache.get(this.cacheKey(employee.id, periodKey)) ?? 0;
+    return this.hoursSoFar(employee, day);
   }
 }
 
@@ -219,6 +243,10 @@ export async function generateSchedule(
     rotationStartKind: e.rotationStartKind,
     targetHours: e.targetHours,
     hoursPeriod: e.hoursPeriod,
+    role: e.role,
+    minRestHours: e.minRestHours,
+    employmentType: e.employmentType,
+    dutyModel: e.dutyModel,
   }));
 
   const poolById = new Map(pool.map((e) => [e.id, e]));
@@ -278,11 +306,14 @@ export async function generateSchedule(
   }
 
   const hoursTracker = new HoursTracker();
-  for (const day of days) {
-    for (const e of pool) {
-      await hoursTracker.hoursSoFar(e, day);
-    }
-  }
+  const periodStart = new Date(start.getFullYear(), start.getMonth() - 3, 1);
+  const allPeriodAssignments = await prisma.assignment.findMany({
+    where: {
+      date: { gte: periodStart, lte: addDays(end, 1) },
+    },
+    include: { shiftTemplate: true },
+  });
+  hoursTracker.preload(pool, allPeriodAssignments);
 
   const toCreate: {
     date: Date;
@@ -353,7 +384,13 @@ export async function generateSchedule(
       shift.startTime,
       shift.endTime,
     );
-    if (!respectsMinRest(lastEnd.get(emp.id), startAt, MIN_REST_HOURS)) {
+    if (
+      !respectsMinRest(
+        lastEnd.get(emp.id),
+        startAt,
+        getMinRestHours(emp),
+      )
+    ) {
       return false;
     }
 
@@ -549,6 +586,18 @@ export async function generateSchedule(
           const pa = preferenceFit(a);
           const pb = preferenceFit(b);
           if (pa !== pb) return pa - pb;
+          // Teilzeit bei Tagesschichten bevorzugen
+          if (shift.kind === "DAY") {
+            const ptA = a.dutyModel === "WEEKDAYS" ? 0 : 1;
+            const ptB = b.dutyModel === "WEEKDAYS" ? 0 : 1;
+            if (ptA !== ptB) return ptA - ptB;
+          }
+          // Teamleiter für Zwischendienste bevorzugen
+          if (shift.kind === "INTERMEDIATE") {
+            const tlA = a.role === "TEAM_LEADER" ? 0 : 1;
+            const tlB = b.role === "TEAM_LEADER" ? 0 : 1;
+            if (tlA !== tlB) return tlA - tlB;
+          }
           const rareA = stillOpen.filter((r) =>
             a.competencyIds.has(r.competencyId),
           ).length;
@@ -585,6 +634,38 @@ export async function generateSchedule(
           required: req.minCount,
           assigned: filled,
         });
+      }
+    }
+
+    // Tagschicht: mindestens eine Teilzeitkraft wenn möglich
+    const dayShift = shifts.find((s) => s.kind === "DAY");
+    if (dayShift) {
+      const assignedDay = assignedMap(day, dayShift.id);
+      const hasPartTime = [...assignedDay.keys()].some((empId) => {
+        const emp = poolById.get(empId);
+        return emp?.dutyModel === "WEEKDAYS" || emp?.employmentType === "PART_TIME";
+      });
+      if (!hasPartTime) {
+        const ptCandidate = pool.find(
+          (e) =>
+            (e.dutyModel === "WEEKDAYS" || e.employmentType === "PART_TIME") &&
+            canAssign(e, day, dayShift) &&
+            !busyToday.has(e.id) &&
+            !assignedDay.has(e.id),
+        );
+        if (ptCandidate) {
+          const openReq = dayShift.requirements.find(
+            (r) =>
+              ptCandidate.competencyIds.has(r.competencyId) &&
+              countFilledForCompetency(assignedDay, r.competencyId) < r.minCount,
+          );
+          if (openReq) {
+            assignedDay.set(ptCandidate.id, openReq.competencyId);
+            busyToday.add(ptCandidate.id);
+            dayAssignees(day).add(ptCandidate.id);
+            recordAssignment(ptCandidate, day, dayShift, openReq.competencyId);
+          }
+        }
       }
     }
   }
@@ -661,6 +742,7 @@ export async function getSchedule(startDate: string, endDate: string) {
     employees,
     competencies,
     days: eachDayOfInterval({ start, end }).map(dayKey),
+    holidays: holidaysInRange(startDate, endDate),
     minRestHours: MIN_REST_HOURS,
   };
 }
@@ -676,10 +758,19 @@ export async function checkRestConflict(params: {
   excludeAssignmentId?: string;
 }): Promise<string | null> {
   const day = startOfDay(parseISO(params.date));
-  const shift = await prisma.shiftTemplate.findUnique({
-    where: { id: params.shiftTemplateId },
-  });
+  const [shift, employee] = await Promise.all([
+    prisma.shiftTemplate.findUnique({
+      where: { id: params.shiftTemplateId },
+    }),
+    prisma.employee.findUnique({ where: { id: params.employeeId } }),
+  ]);
   if (!shift) return "Schichtvorlage nicht gefunden.";
+  if (!employee) return "Mitarbeiter nicht gefunden.";
+
+  const minRest = getMinRestHours({
+    role: employee.role,
+    minRestHours: employee.minRestHours,
+  } as DutyModelConfig);
 
   const { start: nextStart, end: nextEnd } = shiftDateTimeWindow(
     day,
@@ -709,14 +800,14 @@ export async function checkRestConflict(params: {
     );
     // Bestehende Schicht vor der neuen
     if (win.end <= nextStart) {
-      if (!respectsMinRest(win.end, nextStart, MIN_REST_HOURS)) {
-        return `Gesetzliche Ruhezeit unterschritten: nach Ende ${format(win.end, "dd.MM. HH:mm")} mindestens ${MIN_REST_HOURS} Stunden Pause nötig (Schichtbeginn ${format(nextStart, "dd.MM. HH:mm")}).`;
+      if (!respectsMinRest(win.end, nextStart, minRest)) {
+        return `Gesetzliche Ruhezeit unterschritten: nach Ende ${format(win.end, "dd.MM. HH:mm")} mindestens ${minRest} Stunden Pause nötig (Schichtbeginn ${format(nextStart, "dd.MM. HH:mm")}).`;
       }
     }
     // Neue Schicht vor der bestehenden
     if (nextEnd <= win.start) {
-      if (!respectsMinRest(nextEnd, win.start, MIN_REST_HOURS)) {
-        return `Gesetzliche Ruhezeit unterschritten: vor Beginn ${format(win.start, "dd.MM. HH:mm")} mindestens ${MIN_REST_HOURS} Stunden Pause nötig (Schichtende wäre ${format(nextEnd, "dd.MM. HH:mm")}).`;
+      if (!respectsMinRest(nextEnd, win.start, minRest)) {
+        return `Gesetzliche Ruhezeit unterschritten: vor Beginn ${format(win.start, "dd.MM. HH:mm")} mindestens ${minRest} Stunden Pause nötig (Schichtende wäre ${format(nextEnd, "dd.MM. HH:mm")}).`;
       }
     }
   }

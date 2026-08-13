@@ -5,7 +5,13 @@ Web-App zum Erstellen von Dienstplänen mit:
 - **Ursprungsdienstplan** – manuelle Basis; die Generierung startet immer davon
 - **Dienstmodelle** – 4 Tage Dienst / 4 frei (Vollzeit), Mo–Fr 9–15 (Teilzeit), optional Zwischendienste
 - **Überstundenpauschale** – einmal im Monat bis zu 5 Dienste in einer Woche (Vollzeit)
-- **Ruhezeit 12 Stunden** – gesetzliche Pause zwischen Diensten (z. B. 11–23 → kein 6–18 am Folgetag)
+- **Ruhezeit** – 12 Stunden Standard, Teamleiter 9 Stunden zwischen Schichten
+- **Standalone EXE** – `npm run build:exe` erzeugt `release/Schichtwerk.exe`
+- **Setup-Assistent** – Administrator, Kompetenzen, Schichten, Mitarbeiter, 2-Wochen-Plan
+- **Firmenvorlage** – Tagschicht 6–18, Nacht 18–6, Teamleiter-Zwischendienst, Teilzeit
+- **Feiertage** – deutsche Feiertage im Dienstplan hervorgehoben
+- **Export/Import** – Dienstplan als CSV oder JSON
+- **Einstellungen** – lokale SQLite oder externe MySQL, Netzwerkzugriff optional
 - **Mitarbeiter & Kompetenzen** – jeder Person mehrere Fähigkeiten zuweisen
 - **Schichtanforderungen** – einstellen, wie viele Personen je Kompetenz pro Schicht anwesend sein müssen
 - **Schichtpräferenzen** – nur Tag, nur Nacht oder Wechseldienst je Mitarbeiter
@@ -32,6 +38,14 @@ Falls die Startdatei nach `node -v` stehen bleibt: sehr wahrscheinlich der **fal
 ## Installation unter Windows (PC)
 
 **→ [INSTALLATION-WINDOWS.md](INSTALLATION-WINDOWS.md)**
+
+## Portable EXE (Windows)
+
+```bash
+npm run build:exe
+```
+
+Erzeugt `release/Schichtwerk.exe` – startet lokal auf `127.0.0.1:3847`, Datenbank im Benutzerordner.
 
 ## Starten (für Fortgeschrittene)
 
