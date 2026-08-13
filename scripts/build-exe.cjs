@@ -35,7 +35,12 @@ function main() {
       console.log("Produktions-DB aus EXE-Paket ausgeklammert (First-Run).");
     }
 
-    console.log("2) Electron-Abhängigkeiten ...");
+    console.log("2) Node.js-Runtime und Electron-Abhängigkeiten …");
+    const nodeName = process.platform === "win32" ? "node.exe" : "node";
+    const nodeDest = path.join(root, "dist-windows-dienst", nodeName);
+    fs.copyFileSync(process.execPath, nodeDest);
+    console.log("Runtime kopiert:", nodeDest);
+
     run("npm", ["install"], path.join(root, "desktop"));
 
     console.log("3) Portable EXE erzeugen ...");
