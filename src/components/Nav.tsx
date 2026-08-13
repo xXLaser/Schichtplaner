@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const primaryLinks = [
@@ -16,10 +16,12 @@ const moreLinks = [
   { href: "/kompetenzen", label: "Kompetenzen" },
   { href: "/schichten", label: "Schichten" },
   { href: "/stunden", label: "Stunden" },
+  { href: "/einstellungen", label: "Einstellungen" },
 ];
 
-export function Nav() {
+export function Nav({ username }: { username?: string }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -37,6 +39,7 @@ export function Nav() {
     { href: "/schichten", label: "Schichten" },
     { href: "/abwesenheiten", label: "Abwesenheiten" },
     { href: "/stunden", label: "Stunden" },
+    { href: "/einstellungen", label: "Einstellungen" },
   ];
 
   function isActive(href: string) {
@@ -71,6 +74,25 @@ export function Nav() {
                 {l.label}
               </Link>
             ))}
+            {username ? (
+              <form
+                action="/api/auth/logout"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  await fetch("/api/auth/logout", { method: "POST" });
+                  router.replace("/login");
+                  router.refresh();
+                }}
+              >
+                <button
+                  type="submit"
+                  className="rounded-md px-2.5 py-1.5 text-sm text-[var(--muted)] hover:bg-[var(--surface-2)]"
+                  title={`Abmelden (${username})`}
+                >
+                  Abmelden
+                </button>
+              </form>
+            ) : null}
           </nav>
 
           {/* Tablet/mobile top menu button */}

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <title>Schichtwerk einrichten</title>
+    <style>
+      :root {
+        font-family: "Segoe UI", system-ui, sans-serif;
+        color: #0f1c24;
+        background: #e8eef2;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 22px;
+      }
+      p {
+        color: #64748b;
+        margin: 0 0 16px;
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin: 12px 0 4px;
+      }
+      input,
+      select {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 10px;
+        border: 1px solid #c9d5de;
+        border-radius: 6px;
+        font: inherit;
+      }
+      .box {
+        background: #f7fafb;
+        border: 1px solid #c9d5de;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+      }
+      button {
+        margin-top: 16px;
+        background: #0f766e;
+        color: white;
+        border: 0;
+        border-radius: 6px;
+        padding: 10px 16px;
+        font: inherit;
+        cursor: pointer;
+      }
+      .err {
+        color: #b91c1c;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Schichtwerk – Ersteinrichtung</h1>
+    <p>Einmalig: Datenbank und Zugriff wählen. Danach startet die Anwendung.</p>
+    <form id="form">
+      <div class="box">
+        <label>Datenbank</label>
+        <select id="provider">
+          <option value="sqlite">Onboard (SQLite, Datei auf diesem PC)</option>
+          <option value="mysql">Externes MySQL</option>
+        </select>
+        <div id="mysql" style="display: none">
+          <label>MySQL-URL</label>
+          <input
+            id="mysqlUrl"
+            placeholder="mysql://user:pass@host:3306/schichtwerk"
+          />
+        </div>
+      </div>
+      <div class="box">
+        <label>
+          <input id="web" type="checkbox" style="width: auto" />
+          Webzugriff im lokalen Netz erlauben
+        </label>
+        <p>Ohne Haken läuft die App nur auf diesem Computer (localhost).</p>
+        <label>Port</label>
+        <input id="port" type="number" value="3847" min="1" max="65535" />
+      </div>
+      <p class="err" id="err"></p>
+      <button type="submit">Speichern und starten</button>
+    </form>
+    <script>
+      const provider = document.getElementById("provider");
+      const mysql = document.getElementById("mysql");
+      provider.addEventListener("change", () => {
+        mysql.style.display = provider.value === "mysql" ? "block" : "none";
+      });
+      document.getElementById("form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const err = document.getElementById("err");
+        err.textContent = "";
+        try {
+          await window.schichtwerk.saveFirstRun({
+            databaseProvider: provider.value,
+            databaseUrl: document.getElementById("mysqlUrl").value,
+            webAccess: document.getElementById("web").checked,
+            port: Number(document.getElementById("port").value),
+          });
+        } catch (ex) {
+          err.textContent = ex instanceof Error ? ex.message : String(ex);
+        }
+      });
+    </script>
+  </body>
+</html>

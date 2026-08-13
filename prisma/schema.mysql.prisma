@@ -1,0 +1,215 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma-mysql"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("MYSQL_DATABASE_URL")
+}
+
+model Competency {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  color       String   @default("#0d9488")
+  createdAt   DateTime @default(now())
+
+  employees    EmployeeCompetency[]
+  requirements ShiftRequirement[]
+}
+
+model Employee {
+  id                  String   @id @default(cuid())
+  name                String
+  email               String?
+  active              Boolean  @default(true)
+  maxShifts           Int      @default(5)
+  vacationDaysPerYear Int      @default(30)
+  createdAt           DateTime @default(now())
+
+  // Schichtpräferenz: fest Tag, fest Nacht, wechselnd (Rotation) oder egal
+  shiftPreference   ShiftPreference @default(ANY)
+  rotationWeeks     Int             @default(1)
+  rotationStartDate DateTime?
+  rotationStartKind ShiftKind       @default(DAY)
+
+  // Sollstunden pro Monat oder Quartal (z. B. für Teilzeit/Vollzeit)
+  targetHours Float?
+  hoursPeriod HoursPeriod @default(MONTH)
+
+  // Rolle im Schichtbetrieb: Operator 12h, Teamleiter 9h, Teilzeit untertags
+  staffRole StaffRole @default(OPERATOR)
+
+  // Beschäftigungsart & Dienstmodell (Basis für Planerstellung)
+  employmentType          EmploymentType @default(FULL_TIME)
+  dutyModel               DutyModel      @default(ROTATION_4_4)
+  dutyOnDays              Int            @default(4)
+  dutyOffDays             Int            @default(4)
+  dutyCycleStartDate      DateTime?
+  // Überstundenpauschale: einmal im Monat bis zu 5 Dienste in einer Woche
+  allowFifthShiftPerMonth Boolean        @default(true)
+  // Teilzeit Mo–Fr (Standard 09:00–15:00), Wochentage als "1,2,3,4,5" (1=Mo … 7=So)
+  partTimeStartTime       String         @default("09:00")
+  partTimeEndTime         String         @default("15:00")
+  workWeekdays            String         @default("1,2,3,4,5")
+  // Zwischendienste (z. B. 11–23) erlaubt
+  allowIntermediateShifts Boolean        @default(false)
+  defaultShiftTemplateId  String?
+
+  competencies         EmployeeCompetency[]
+  absences             Absence[]
+  assignments          Assignment[]
+  baseScheduleEntries  BaseScheduleEntry[]
+  defaultShiftTemplate ShiftTemplate?       @relation("EmployeeDefaultShift", fields: [defaultShiftTemplateId], references: [id], onDelete: SetNull)
+}
+
+enum StaffRole {
+  OPERATOR
+  TEAM_LEAD
+  PART_TIME
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+}
+
+enum DutyModel {
+  ROTATION_4_4
+  WEEKDAYS
+  CUSTOM
+}
+
+enum ShiftPreference {
+  ANY
+  DAY_ONLY
+  NIGHT_ONLY
+  ROTATING
+}
+
+enum HoursPeriod {
+  MONTH
+  QUARTER
+}
+
+model EmployeeCompetency {
+  employeeId   String
+  competencyId String
+  employee     Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  competency   Competency @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, competencyId])
+}
+
+model Absence {
+  id         String        @id @default(cuid())
+  employeeId String
+  type       AbsenceType
+  status     AbsenceStatus @default(APPROVED)
+  startDate  DateTime
+  endDate    DateTime
+  note       String?
+  createdAt  DateTime      @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+enum AbsenceType {
+  VACATION
+  SICK
+  OTHER
+}
+
+enum AbsenceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model ShiftTemplate {
+  id        String    @id @default(cuid())
+  name      String
+  startTime String
+  endTime   String
+  color     String    @default("#334155")
+  active    Boolean   @default(true)
+  sortOrder Int       @default(0)
+  kind      ShiftKind @default(DAY)
+  createdAt DateTime  @default(now())
+
+  requirements        ShiftRequirement[]
+  assignments         Assignment[]
+  baseScheduleEntries BaseScheduleEntry[]
+  defaultForEmployees Employee[]          @relation("EmployeeDefaultShift")
+}
+
+enum ShiftKind {
+  DAY
+  NIGHT
+  INTERMEDIATE
+}
+
+model ShiftRequirement {
+  id              String @id @default(cuid())
+  shiftTemplateId String
+  competencyId    String
+  minCount        Int    @default(1)
+
+  shiftTemplate ShiftTemplate @relation(fields: [shiftTemplateId], references: [id], onDelete: Cascade)
+  competency    Competency    @relation(fields: [competencyId], references: [id], onDelete: Cascade)
+
+  @@unique([shiftTemplateId, competencyId])
+}
+
+model Assignment {
+  id              String   @id @default(cuid())
+  date            DateTime
+  shiftTemplateId String
+  employeeId      String
+  competencyId    String?
+  createdAt       DateTime @default(now())
+
+  shiftTemplate ShiftTemplate @relation(fields: [shiftTemplateId], references: [id], onDelete: Cascade)
+  employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([date, shiftTemplateId, employeeId])
+  @@index([date])
+}
+
+/// Manuell gepflegter Ursprungsdienstplan – Basis für die Planerstellung.
+model BaseScheduleEntry {
+  id              String   @id @default(cuid())
+  date            DateTime
+  shiftTemplateId String
+  employeeId      String
+  note            String?
+  createdAt       DateTime @default(now())
+
+  shiftTemplate ShiftTemplate @relation(fields: [shiftTemplateId], references: [id], onDelete: Cascade)
+  employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([date, shiftTemplateId, employeeId])
+  @@index([date])
+}
+
+/// Einfache Key/Value-Einstellungen (z. B. Setup-Zeitfenster).
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+enum UserRole {
+  ADMIN
+  PLANNER
+}
+
+/// Lokales Admin-/Planerkonto (Ersteinrichtung).
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         UserRole @default(ADMIN)
+  createdAt    DateTime @default(now())
+}

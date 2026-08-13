@@ -7,6 +7,10 @@ import {
   getYear,
   startOfDay,
 } from "date-fns";
+import {
+  staffAllowsShift,
+  type StaffRole,
+} from "./staffRules";
 
 /** Gesetzliche Mindestruhezeit zwischen zwei Diensten (Stunden). */
 export const MIN_REST_HOURS = 12;
@@ -14,8 +18,10 @@ export const MIN_REST_HOURS = 12;
 export type DutyModel = "ROTATION_4_4" | "WEEKDAYS" | "CUSTOM";
 export type EmploymentType = "FULL_TIME" | "PART_TIME";
 export type ShiftKind = "DAY" | "NIGHT" | "INTERMEDIATE";
+export type { StaffRole };
 
 export type DutyModelConfig = {
+  staffRole?: StaffRole;
   employmentType: EmploymentType;
   dutyModel: DutyModel;
   dutyOnDays: number;
@@ -74,32 +80,25 @@ export function isDutyDay(employee: DutyModelConfig, day: Date): boolean {
 }
 
 /**
- * Ob eine Schichtvorlage zum Dienstmodell des Mitarbeiters passt.
- * - Zwischendienste nur bei allowIntermediateShifts
- * - Teilzeit WEEKDAYS: bevorzugt passende Zeiten, sonst nur Intermediate wenn erlaubt
+ * Ob eine Schichtvorlage zum Dienstmodell und zur Rolle passt.
+ * Teamleiter nur 9h-Zwischendienst, Teilzeit nur kurze Tagschicht,
+ * Operator 12h Tag/Nacht.
  */
 export function shiftMatchesDutyModel(
   employee: DutyModelConfig,
   shift: ShiftTimes,
 ): boolean {
-  if (shift.kind === "INTERMEDIATE") {
-    return employee.allowIntermediateShifts;
-  }
-
-  if (employee.dutyModel === "WEEKDAYS") {
-    // Standard-Teilzeitschicht: exakte Zeiten Mo–Fr 9–15
-    if (
-      shift.startTime === employee.partTimeStartTime &&
-      shift.endTime === employee.partTimeEndTime
-    ) {
-      return true;
-    }
-    // Andere Tag-/Nachtschichten nur, wenn keine strikte Teilzeit-Zeit nötig –
-    // Teilzeit ohne Intermediate bleibt auf ihre Kernzeiten beschränkt.
-    return false;
-  }
-
-  return true;
+  return staffAllowsShift(
+    {
+      staffRole: employee.staffRole ?? "OPERATOR",
+      employmentType: employee.employmentType,
+      dutyModel: employee.dutyModel,
+      partTimeStartTime: employee.partTimeStartTime,
+      partTimeEndTime: employee.partTimeEndTime,
+      allowIntermediateShifts: employee.allowIntermediateShifts,
+    },
+    shift,
+  );
 }
 
 /** Start- und Endzeitpunkt einer Schicht an einem Kalendertag. */
@@ -218,7 +217,12 @@ export function preferredShiftForEmployee<
     if (preferred) return preferred;
   }
 
-  if (employee.dutyModel === "WEEKDAYS") {
+  if (employee.staffRole === "TEAM_LEAD") {
+    const zwischen = allowed.find((s) => s.kind === "INTERMEDIATE");
+    if (zwischen) return zwischen;
+  }
+
+  if (employee.dutyModel === "WEEKDAYS" || employee.staffRole === "PART_TIME") {
     const match = allowed.find(
       (s) =>
         s.startTime === employee.partTimeStartTime &&

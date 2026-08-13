@@ -9,7 +9,6 @@ import {
 } from "date-fns";
 import { prisma } from "./prisma";
 import {
-  periodBounds,
   periodKeyFor,
   preferenceAllowsShift,
   shiftDurationHours,
@@ -28,6 +27,9 @@ import {
   type DutyModelConfig,
   type EmploymentType,
 } from "./dutyModel";
+import { fillPriority, type StaffRole } from "./staffRules";
+import { getAppConfig } from "./appConfig";
+import { holidaysInRange } from "./holidays";
 
 export type ScheduleWarning = {
   date: string;
@@ -48,6 +50,7 @@ export type GenerateResult = {
 type EmployeeWithSkills = DutyModelConfig & {
   id: string;
   name: string;
+  staffRole: StaffRole;
   competencyIds: Set<string>;
   shiftPreference: "ANY" | "DAY_ONLY" | "NIGHT_ONLY" | "ROTATING";
   rotationWeeks: number;
@@ -78,6 +81,7 @@ function isAbsentOnDay(
 }
 
 function toDutyConfig(e: {
+  staffRole?: StaffRole | null;
   employmentType: EmploymentType;
   dutyModel: DutyModel;
   dutyOnDays: number;
@@ -92,6 +96,7 @@ function toDutyConfig(e: {
   maxShifts: number;
 }): DutyModelConfig {
   return {
+    staffRole: e.staffRole ?? "OPERATOR",
     employmentType: e.employmentType,
     dutyModel: e.dutyModel,
     dutyOnDays: e.dutyOnDays,
@@ -114,27 +119,25 @@ class HoursTracker {
     return `${employeeId}|${periodKey}`;
   }
 
-  async hoursSoFar(employee: EmployeeWithSkills, day: Date): Promise<number> {
-    const periodKey = periodKeyFor(day, employee.hoursPeriod);
-    const key = this.cacheKey(employee.id, periodKey);
-    if (this.cache.has(key)) return this.cache.get(key)!;
-
-    const { start, end } = periodBounds(day, employee.hoursPeriod);
-    const assignments = await prisma.assignment.findMany({
-      where: {
-        employeeId: employee.id,
-        date: { gte: start, lte: addDays(end, 1) },
-      },
-      include: { shiftTemplate: true },
-    });
-    const hours = assignments.reduce(
-      (sum, a) =>
-        sum +
-        shiftDurationHours(a.shiftTemplate.startTime, a.shiftTemplate.endTime),
-      0,
-    );
-    this.cache.set(key, hours);
-    return hours;
+  /** Einmalig alle Zuweisungen der relevanten Perioden einlesen. */
+  seed(
+    rows: {
+      employeeId: string;
+      date: Date;
+      startTime: string;
+      endTime: string;
+    }[],
+    employees: EmployeeWithSkills[],
+  ) {
+    const byId = new Map(employees.map((e) => [e.id, e]));
+    for (const row of rows) {
+      const emp = byId.get(row.employeeId);
+      if (!emp) continue;
+      const hours = shiftDurationHours(row.startTime, row.endTime);
+      const periodKey = periodKeyFor(row.date, emp.hoursPeriod);
+      const key = this.cacheKey(emp.id, periodKey);
+      this.cache.set(key, (this.cache.get(key) ?? 0) + hours);
+    }
   }
 
   addHours(employee: EmployeeWithSkills, day: Date, hours: number) {
@@ -172,7 +175,9 @@ export async function generateSchedule(
   const end = startOfDay(parseISO(endDate));
   const days = eachDayOfInterval({ start, end });
 
-  const [employees, absences, shifts, baseEntries, priorAssignments] =
+  const hoursLookback = new Date(start.getFullYear(), start.getMonth() - 3, 1);
+
+  const [employees, absences, shifts, baseEntries, priorAssignments, hoursRows] =
     await Promise.all([
       prisma.employee.findMany({
         where: { active: true },
@@ -196,7 +201,6 @@ export async function generateSchedule(
         },
         include: { shiftTemplate: true },
       }),
-      // Vorherige Dienste (für Ruhezeit über die Periodengrenze hinweg)
       prisma.assignment.findMany({
         where: {
           date: {
@@ -206,12 +210,21 @@ export async function generateSchedule(
         },
         include: { shiftTemplate: true },
       }),
+      prisma.assignment.findMany({
+        where: {
+          date: { gte: hoursLookback, lt: start },
+        },
+        include: {
+          shiftTemplate: { select: { startTime: true, endTime: true } },
+        },
+      }),
     ]);
 
   const pool: EmployeeWithSkills[] = employees.map((e) => ({
     id: e.id,
     name: e.name,
     ...toDutyConfig(e),
+    staffRole: (e.staffRole as StaffRole) ?? "OPERATOR",
     competencyIds: new Set(e.competencies.map((c) => c.competencyId)),
     shiftPreference: e.shiftPreference,
     rotationWeeks: e.rotationWeeks,
@@ -240,6 +253,8 @@ export async function generateSchedule(
   const fifthWeeks = new Set<string>();
   /** Letztes Schichtende je Mitarbeiter (für 12h-Ruhezeit). */
   const lastEnd = new Map<string, Date>();
+  /** Letzte Schichtart je Mitarbeiter (durchgehende Blöcke). */
+  const lastKind = new Map<string, ShiftKind>();
 
   for (const e of pool) assignmentCount.set(e.id, 0);
 
@@ -251,7 +266,10 @@ export async function generateSchedule(
       a.shiftTemplate.endTime,
     );
     const prev = lastEnd.get(a.employeeId);
-    if (!prev || endAt > prev) lastEnd.set(a.employeeId, endAt);
+    if (!prev || endAt > prev) {
+      lastEnd.set(a.employeeId, endAt);
+      lastKind.set(a.employeeId, a.shiftTemplate.kind);
+    }
   }
 
   // Bestehende Wochenzähler im Monat (außerhalb des Fensters) für 5er-Limit
@@ -278,11 +296,15 @@ export async function generateSchedule(
   }
 
   const hoursTracker = new HoursTracker();
-  for (const day of days) {
-    for (const e of pool) {
-      await hoursTracker.hoursSoFar(e, day);
-    }
-  }
+  hoursTracker.seed(
+    hoursRows.map((a) => ({
+      employeeId: a.employeeId,
+      date: a.date,
+      startTime: a.shiftTemplate.startTime,
+      endTime: a.shiftTemplate.endTime,
+    })),
+    pool,
+  );
 
   const toCreate: {
     date: Date;
@@ -305,7 +327,7 @@ export async function generateSchedule(
   function recordAssignment(
     emp: EmployeeWithSkills,
     day: Date,
-    shift: { id: string; startTime: string; endTime: string },
+    shift: { id: string; startTime: string; endTime: string; kind: ShiftKind },
     competencyId: string | null,
   ) {
     const { start: startAt, end: endAt } = shiftDateTimeWindow(
@@ -325,6 +347,7 @@ export async function generateSchedule(
     weekCounts.set(wk, next);
     markFifthShiftWeek(day, next, fifthWeeks);
     lastEnd.set(emp.id, endAt);
+    lastKind.set(emp.id, shift.kind);
     hoursTracker.addHours(
       emp,
       day,
@@ -410,10 +433,15 @@ export async function generateSchedule(
     }
     return n;
   }
-  /** Bevorzugt durchgehende Einteilung im Dienstblock (Vortag schon Dienst). */
-  function continuityRank(empId: string, day: Date): number {
+  /** Bevorzugt durchgehende Einteilung im Dienstblock (Vortag schon Dienst, gleiche Art). */
+  function continuityRank(empId: string, day: Date, kind?: ShiftKind): number {
     const prev = dayAssignees(subDays(day, 1));
-    return prev.has(empId) ? 0 : 1;
+    const prevKind = lastKind.get(empId);
+    if (prev.has(empId) && kind && prevKind === kind) return 0;
+    if (prev.has(empId) && kind && prevKind && prevKind !== kind) return 3;
+    if (prev.has(empId)) return 1;
+    if (kind && prevKind === kind) return 1;
+    return 2;
   }
 
   const sortedBase = [...baseEntries].sort(
@@ -490,6 +518,9 @@ export async function generateSchedule(
       }
     }
     jobs.sort((a, b) => {
+      const priA = fillPriority(a.shift);
+      const priB = fillPriority(b.shift);
+      if (priA !== priB) return priA - priB;
       const matches = (job: FillJob, e: EmployeeWithSkills) =>
         canAssign(e, day, job.shift) && !busyToday.has(e.id);
       const availA = pool.filter(
@@ -501,7 +532,6 @@ export async function generateSchedule(
       if (availA !== availB) return availA - availB;
       if (a.req.minCount !== b.req.minCount)
         return a.req.minCount - b.req.minCount;
-      // Tag vor Nacht bei sonst gleichem Bedarf (sortOrder)
       if (a.shift.sortOrder !== b.shift.sortOrder)
         return a.shift.sortOrder - b.shift.sortOrder;
       return a.req.competency.name.localeCompare(b.req.competency.name, "de");
@@ -530,6 +560,16 @@ export async function generateSchedule(
           canAssign(e, day, shift);
 
         const stillOpen = openOtherOnShift();
+        function roleFit(e: EmployeeWithSkills): number {
+          if (shift.kind === "INTERMEDIATE") {
+            return e.staffRole === "TEAM_LEAD" ? 0 : 2;
+          }
+          if (e.staffRole === "PART_TIME" || e.dutyModel === "WEEKDAYS") {
+            return 0;
+          }
+          if (e.staffRole === "TEAM_LEAD") return 3;
+          return 1;
+        }
         function preferenceFit(e: EmployeeWithSkills): number {
           if (shift.kind === "DAY") {
             if (e.shiftPreference === "DAY_ONLY") return 0;
@@ -546,6 +586,9 @@ export async function generateSchedule(
           return 1;
         }
         const candidates = pool.filter(baseFilter).sort((a, b) => {
+          const ra = roleFit(a);
+          const rb = roleFit(b);
+          if (ra !== rb) return ra - rb;
           const pa = preferenceFit(a);
           const pb = preferenceFit(b);
           if (pa !== pb) return pa - pb;
@@ -556,8 +599,8 @@ export async function generateSchedule(
             b.competencyIds.has(r.competencyId),
           ).length;
           if (rareA !== rareB) return rareA - rareB;
-          const ca = continuityRank(a.id, day);
-          const cb = continuityRank(b.id, day);
+          const ca = continuityRank(a.id, day, shift.kind);
+          const cb = continuityRank(b.id, day, shift.kind);
           if (ca !== cb) return ca - cb;
           const fa = fractionFilled(a, day);
           const fb = fractionFilled(b, day);
@@ -587,6 +630,59 @@ export async function generateSchedule(
         });
       }
     }
+
+    // Untertags immer eine Teilzeitkraft, sofern eine verfügbar ist.
+    const partTimeShift =
+      shifts.find(
+        (s) =>
+          s.startTime === "09:00" &&
+          s.endTime === "15:00" &&
+          s.kind === "DAY",
+      ) ?? shifts.find((s) => s.kind === "DAY" && s.name.toLowerCase().includes("teilzeit"));
+    if (partTimeShift) {
+      const assignedPt = assignedMap(day, partTimeShift.id);
+      const alreadyHasPt = [...assignedPt.keys()].some((id) => {
+        const emp = poolById.get(id);
+        return emp && (emp.staffRole === "PART_TIME" || emp.dutyModel === "WEEKDAYS");
+      });
+      const anyDayHasPt = shifts.some((s) => {
+        if (s.kind === "NIGHT" || s.kind === "INTERMEDIATE") return false;
+        return [...assignedMap(day, s.id).keys()].some((id) => {
+          const emp = poolById.get(id);
+          return emp && (emp.staffRole === "PART_TIME" || emp.dutyModel === "WEEKDAYS");
+        });
+      });
+      if (!alreadyHasPt && !anyDayHasPt) {
+        const pt = pool
+          .filter(
+            (e) =>
+              (e.staffRole === "PART_TIME" || e.dutyModel === "WEEKDAYS") &&
+              !busyToday.has(e.id) &&
+              canAssign(e, day, partTimeShift),
+          )
+          .sort((a, b) => fractionFilled(a, day) - fractionFilled(b, day))[0];
+        if (pt) {
+          const req =
+            partTimeShift.requirements.find((r) =>
+              pt.competencyIds.has(r.competencyId),
+            ) ?? partTimeShift.requirements[0];
+          assignedMap(day, partTimeShift.id).set(pt.id, req?.competencyId ?? null);
+          busyToday.add(pt.id);
+          dayAssignees(day).add(pt.id);
+          recordAssignment(pt, day, partTimeShift, req?.competencyId ?? null);
+        } else {
+          warnings.push({
+            date: dayKey(day),
+            shiftTemplateId: partTimeShift.id,
+            shiftName: partTimeShift.name,
+            competencyId: "",
+            competencyName: "Teilzeit untertags",
+            required: 1,
+            assigned: 0,
+          });
+        }
+      }
+    }
   }
   if (toCreate.length > 0) {
     await prisma.assignment.createMany({ data: toCreate });
@@ -598,17 +694,16 @@ export async function generateSchedule(
 export async function getSchedule(startDate: string, endDate: string) {
   const start = startOfDay(parseISO(startDate));
   const end = startOfDay(parseISO(endDate));
+  const config = getAppConfig();
 
-  const [assignments, absences, shifts, employees, competencies, baseEntries] =
+  const [assignments, absences, shifts, employees, competencies, baseEntries, holidaySetting] =
     await Promise.all([
       prisma.assignment.findMany({
         where: {
           date: { gte: start, lte: addDays(end, 1) },
         },
         include: {
-          employee: {
-            include: { competencies: { include: { competency: true } } },
-          },
+          employee: { select: { id: true, name: true } },
           shiftTemplate: true,
         },
         orderBy: [{ date: "asc" }],
@@ -619,7 +714,7 @@ export async function getSchedule(startDate: string, endDate: string) {
           startDate: { lte: end },
           endDate: { gte: start },
         },
-        include: { employee: true },
+        include: { employee: { select: { id: true, name: true } } },
       }),
       prisma.shiftTemplate.findMany({
         where: { active: true },
@@ -637,16 +732,33 @@ export async function getSchedule(startDate: string, endDate: string) {
           date: { gte: start, lte: addDays(end, 1) },
         },
         include: {
-          employee: true,
+          employee: { select: { id: true, name: true } },
           shiftTemplate: true,
         },
       }),
+      prisma.appSetting.findUnique({ where: { key: "holiday.region" } }),
     ]);
+
+  const empSkills = new Map(
+    employees.map((e) => [
+      e.id,
+      e.competencies.map((c) => ({ competency: c.competency })),
+    ]),
+  );
 
   return {
     assignments: assignments.map((a) => ({
-      ...a,
+      id: a.id,
       date: dayKey(a.date),
+      shiftTemplateId: a.shiftTemplateId,
+      employeeId: a.employeeId,
+      competencyId: a.competencyId,
+      employee: {
+        id: a.employee.id,
+        name: a.employee.name,
+        competencies: empSkills.get(a.employeeId) ?? [],
+      },
+      shiftTemplate: a.shiftTemplate,
     })),
     absences: absences.map((a) => ({
       ...a,
@@ -661,7 +773,13 @@ export async function getSchedule(startDate: string, endDate: string) {
     employees,
     competencies,
     days: eachDayOfInterval({ start, end }).map(dayKey),
+    holidays: holidaysInRange(
+      start,
+      end,
+      holidaySetting?.value === "DE" ? "DE" : config.holidayRegion,
+    ),
     minRestHours: MIN_REST_HOURS,
+    planningDays: config.planningDays,
   };
 }
 

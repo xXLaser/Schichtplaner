@@ -82,6 +82,14 @@ async function main() {
     path.join(root, "prisma", "schema.prisma"),
     path.join(distDir, "prisma", "schema.prisma"),
   );
+  copyRecursive(
+    path.join(root, "prisma", "schema.mysql.prisma"),
+    path.join(distDir, "prisma", "schema.mysql.prisma"),
+  );
+  copyRecursive(
+    path.join(root, "src", "generated"),
+    path.join(distDir, "src", "generated"),
+  );
 
   if (preservedDb && fs.existsSync(tmpDb)) {
     const destDbDir = path.join(distDir, "prisma");
@@ -94,6 +102,10 @@ async function main() {
   const prismaCliSrc = path.join(root, "node_modules", "prisma");
   const prismaCliDest = path.join(distDir, "node_modules", "prisma");
   copyRecursive(prismaCliSrc, prismaCliDest);
+  copyRecursive(
+    path.join(root, "node_modules", "mysql2"),
+    path.join(distDir, "node_modules", "mysql2"),
+  );
 
   // Seed-Skript + tsx fuer Erstbefuellung
   copyRecursive(

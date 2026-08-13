@@ -5,6 +5,7 @@ export const ONBOARDING_STEP_KEY = "onboarding.step";
 
 export type OnboardingStep =
   | "welcome"
+  | "admin"
   | "competencies"
   | "shifts"
   | "employees"
@@ -14,6 +15,7 @@ export type OnboardingStep =
 
 export const ONBOARDING_STEPS: OnboardingStep[] = [
   "welcome",
+  "admin",
   "competencies",
   "shifts",
   "employees",
@@ -26,12 +28,14 @@ export type OnboardingStatus = {
   completed: boolean;
   step: OnboardingStep;
   counts: {
+    users: number;
     competencies: number;
     shifts: number;
     employees: number;
     baseEntries: number;
   };
   canProceed: {
+    admin: boolean;
     competencies: boolean;
     shifts: boolean;
     employees: boolean;
@@ -53,13 +57,14 @@ async function setSetting(key: string, value: string): Promise<void> {
 }
 
 async function getCounts() {
-  const [competencies, shifts, employees, baseEntries] = await Promise.all([
+  const [users, competencies, shifts, employees, baseEntries] = await Promise.all([
+    prisma.user.count(),
     prisma.competency.count(),
     prisma.shiftTemplate.count({ where: { active: true } }),
     prisma.employee.count({ where: { active: true } }),
     prisma.baseScheduleEntry.count(),
   ]);
-  return { competencies, shifts, employees, baseEntries };
+  return { users, competencies, shifts, employees, baseEntries };
 }
 
 function parseStep(value: string | null): OnboardingStep {
@@ -73,54 +78,40 @@ function parseStep(value: string | null): OnboardingStep {
 export async function getOnboardingStatus(): Promise<OnboardingStatus> {
   const counts = await getCounts();
   const flag = await getSetting(ONBOARDING_COMPLETED_KEY);
+  const canProceed = {
+    admin: counts.users >= 1,
+    competencies: counts.competencies >= 1,
+    shifts: counts.shifts >= 1,
+    employees: counts.employees >= 1,
+    schedule: counts.baseEntries >= 1,
+  };
 
   if (flag === "true") {
     return {
       completed: true,
       step: "done",
       counts,
-      canProceed: {
-        competencies: counts.competencies >= 1,
-        shifts: counts.shifts >= 1,
-        employees: counts.employees >= 1,
-        schedule: counts.baseEntries >= 1,
-      },
+      canProceed,
     };
   }
 
-  // Explizit zurückgesetzt → Wizard erzwingen (auch wenn Daten existieren)
   if (flag === "false") {
     const step = parseStep(await getSetting(ONBOARDING_STEP_KEY));
     return {
       completed: false,
       step,
       counts,
-      canProceed: {
-        competencies: counts.competencies >= 1,
-        shifts: counts.shifts >= 1,
-        employees: counts.employees >= 1,
-        schedule: counts.baseEntries >= 1,
-      },
+      canProceed,
     };
   }
 
-  // Legacy / schon konfiguriert, Flag fehlt noch → einmalig abschließen
-  if (
-    counts.employees > 0 &&
-    counts.competencies > 0 &&
-    counts.shifts > 0
-  ) {
+  if (counts.employees > 0 && counts.competencies > 0 && counts.shifts > 0) {
     await setSetting(ONBOARDING_COMPLETED_KEY, "true");
     return {
       completed: true,
       step: "done",
       counts,
-      canProceed: {
-        competencies: true,
-        shifts: true,
-        employees: true,
-        schedule: counts.baseEntries >= 1,
-      },
+      canProceed,
     };
   }
 
@@ -129,12 +120,7 @@ export async function getOnboardingStatus(): Promise<OnboardingStatus> {
     completed: false,
     step,
     counts,
-    canProceed: {
-      competencies: counts.competencies >= 1,
-      shifts: counts.shifts >= 1,
-      employees: counts.employees >= 1,
-      schedule: counts.baseEntries >= 1,
-    },
+    canProceed,
   };
 }
 
@@ -145,6 +131,9 @@ export async function setOnboardingStep(step: OnboardingStep): Promise<Onboardin
 
 export async function completeOnboarding(): Promise<OnboardingStatus> {
   const status = await getOnboardingStatus();
+  if (!status.canProceed.admin) {
+    throw new Error("Bitte zuerst ein Administratorkonto anlegen.");
+  }
   if (!status.canProceed.competencies) {
     throw new Error("Mindestens eine Kompetenz ist erforderlich.");
   }

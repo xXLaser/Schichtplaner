@@ -19,6 +19,7 @@ type ShiftPreference = "ANY" | "DAY_ONLY" | "NIGHT_ONLY" | "ROTATING";
 type ShiftKind = "DAY" | "NIGHT" | "INTERMEDIATE";
 type HoursPeriod = "MONTH" | "QUARTER";
 type EmploymentType = "FULL_TIME" | "PART_TIME";
+type StaffRole = "OPERATOR" | "TEAM_LEAD" | "PART_TIME";
 type DutyModel = "ROTATION_4_4" | "WEEKDAYS" | "CUSTOM";
 type ShiftTemplate = {
   id: string;
@@ -41,6 +42,7 @@ type Employee = {
   rotationStartKind: ShiftKind;
   targetHours: number | null;
   hoursPeriod: HoursPeriod;
+  staffRole: StaffRole;
   employmentType: EmploymentType;
   dutyModel: DutyModel;
   dutyOnDays: number;
@@ -60,6 +62,12 @@ const PREFERENCE_LABELS: Record<ShiftPreference, string> = {
   DAY_ONLY: "Nur Tagschicht",
   NIGHT_ONLY: "Nur Nachtschicht",
   ROTATING: "Wechseldienst",
+};
+
+const STAFF_LABELS: Record<StaffRole, string> = {
+  OPERATOR: "Schicht 12 Std.",
+  TEAM_LEAD: "Teamleiter 9 Std.",
+  PART_TIME: "Teilzeit untertags",
 };
 
 const DUTY_LABELS: Record<DutyModel, string> = {
@@ -87,6 +95,7 @@ export default function MitarbeiterPage() {
   const [hoursPeriod, setHoursPeriod] = useState<HoursPeriod>("MONTH");
   const [employmentType, setEmploymentType] =
     useState<EmploymentType>("FULL_TIME");
+  const [staffRole, setStaffRole] = useState<StaffRole>("OPERATOR");
   const [dutyModel, setDutyModel] = useState<DutyModel>("ROTATION_4_4");
   const [dutyOnDays, setDutyOnDays] = useState(4);
   const [dutyOffDays, setDutyOffDays] = useState(4);
@@ -139,6 +148,22 @@ export default function MitarbeiterPage() {
     );
   }
 
+  function applyStaffRole(role: StaffRole) {
+    setStaffRole(role);
+    if (role === "PART_TIME") {
+      applyEmploymentDefaults("PART_TIME");
+      setAllowIntermediate(false);
+      setShiftPreference("DAY_ONLY");
+    } else if (role === "TEAM_LEAD") {
+      applyEmploymentDefaults("FULL_TIME");
+      setAllowIntermediate(true);
+      setShiftPreference("ANY");
+    } else {
+      applyEmploymentDefaults("FULL_TIME");
+      setAllowIntermediate(false);
+    }
+  }
+
   function applyEmploymentDefaults(type: EmploymentType) {
     setEmploymentType(type);
     if (type === "PART_TIME") {
@@ -175,6 +200,7 @@ export default function MitarbeiterPage() {
     setTargetHours(emp.targetHours != null ? String(emp.targetHours) : "");
     setHoursPeriod(emp.hoursPeriod ?? "MONTH");
     setEmploymentType(emp.employmentType ?? "FULL_TIME");
+    setStaffRole(emp.staffRole ?? "OPERATOR");
     setDutyModel(emp.dutyModel ?? "ROTATION_4_4");
     setDutyOnDays(emp.dutyOnDays ?? 4);
     setDutyOffDays(emp.dutyOffDays ?? 4);
@@ -203,6 +229,7 @@ export default function MitarbeiterPage() {
     setTargetHours("160");
     setHoursPeriod("MONTH");
     setEmploymentType("FULL_TIME");
+    setStaffRole("OPERATOR");
     setDutyModel("ROTATION_4_4");
     setDutyOnDays(4);
     setDutyOffDays(4);
@@ -230,6 +257,7 @@ export default function MitarbeiterPage() {
       rotationStartKind,
       targetHours: targetHours === "" ? null : Number(targetHours),
       hoursPeriod,
+      staffRole,
       employmentType,
       dutyModel,
       dutyOnDays,
@@ -282,6 +310,7 @@ export default function MitarbeiterPage() {
 
   function modelSummary(emp: Employee): string {
     const parts = [
+      STAFF_LABELS[emp.staffRole] ?? emp.staffRole,
       emp.employmentType === "PART_TIME" ? "Teilzeit" : "Vollzeit",
       DUTY_LABELS[emp.dutyModel] ?? emp.dutyModel,
     ];
@@ -348,6 +377,15 @@ export default function MitarbeiterPage() {
               <p className="text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
                 Dienstmodell
               </p>
+              <Select
+                label="Rolle im Betrieb"
+                value={staffRole}
+                onChange={(e) => applyStaffRole(e.target.value as StaffRole)}
+              >
+                <option value="OPERATOR">Schicht 12 Std. (6–18 / 18–6)</option>
+                <option value="TEAM_LEAD">Teamleiter 9 Std. (zwischen den Schichten)</option>
+                <option value="PART_TIME">Teilzeit untertags</option>
+              </Select>
               <Select
                 label="Beschäftigung"
                 value={employmentType}

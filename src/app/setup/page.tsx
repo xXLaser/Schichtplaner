@@ -12,12 +12,14 @@ type OnboardingStatus = {
   completed: boolean;
   step: string;
   counts: {
+    users: number;
     competencies: number;
     shifts: number;
     employees: number;
     baseEntries: number;
   };
   canProceed: {
+    admin: boolean;
     competencies: boolean;
     shifts: boolean;
     employees: boolean;
@@ -54,6 +56,7 @@ type BaseEntry = {
 
 const STEPS = [
   { id: "welcome", label: "Start" },
+  { id: "admin", label: "Admin" },
   { id: "competencies", label: "Kompetenzen" },
   { id: "shifts", label: "Schichten" },
   { id: "employees", label: "Mitarbeiter" },
@@ -86,7 +89,12 @@ export default function SetupPage() {
   const [empName, setEmpName] = useState("");
   const [empPref, setEmpPref] = useState("ANY");
   const [empModel, setEmpModel] = useState("ROTATION_4_4");
+  const [empRole, setEmpRole] = useState("OPERATOR");
   const [empComps, setEmpComps] = useState<string[]>([]);
+
+  const [adminName, setAdminName] = useState("");
+  const [adminPass, setAdminPass] = useState("");
+  const [adminPass2, setAdminPass2] = useState("");
 
   const [setupStart, setSetupStart] = useState(() => toISODate(weekStart()));
   const [baseEntries, setBaseEntries] = useState<BaseEntry[]>([]);
@@ -136,9 +144,20 @@ export default function SetupPage() {
   }, [setupStart, setupEnd]);
 
   useEffect(() => {
-    void refreshStatus().catch((e) =>
-      setMessage(e instanceof Error ? e.message : "Laden fehlgeschlagen"),
-    );
+    void refreshStatus()
+      .then((json) => {
+        if (
+          json &&
+          !json.completed &&
+          json.step &&
+          STEPS.some((s) => s.id === json.step)
+        ) {
+          setStep(json.step as StepId);
+        }
+      })
+      .catch((e) =>
+        setMessage(e instanceof Error ? e.message : "Laden fehlgeschlagen"),
+      );
   }, [refreshStatus]);
 
   useEffect(() => {
@@ -167,6 +186,51 @@ export default function SetupPage() {
       await refreshStatus();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Schritt fehlgeschlagen");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createAdmin(e: FormEvent) {
+    e.preventDefault();
+    if (adminPass !== adminPass2) {
+      setMessage("Passwörter stimmen nicht überein.");
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      await apiSend("/api/auth/admin", "POST", {
+        username: adminName.trim(),
+        password: adminPass,
+      });
+      setAdminPass("");
+      setAdminPass2("");
+      await refreshStatus();
+      setMessage("Administratorkonto angelegt.");
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Admin anlegen fehlgeschlagen");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyCompanyModel() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const result = await apiSend<{
+        competenciesCreated: number;
+        shiftsCreated: number;
+      }>("/api/company-template", "POST");
+      await loadCompetencies();
+      await loadShifts();
+      await refreshStatus();
+      setMessage(
+        `Betriebsmodell eingespielt: ${result.competenciesCreated} Kompetenzen, ${result.shiftsCreated} Schichten (Tag 6–18, Nacht 18–6, Teamleiter 12–21, Teilzeit 9–15).`,
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Vorlage fehlgeschlagen");
     } finally {
       setBusy(false);
     }
@@ -242,7 +306,12 @@ export default function SetupPage() {
         name: empName.trim(),
         shiftPreference: empPref,
         dutyModel: empModel,
-        employmentType: empModel === "WEEKDAYS" ? "PART_TIME" : "FULL_TIME",
+        staffRole: empRole,
+        employmentType:
+          empRole === "PART_TIME" || empModel === "WEEKDAYS"
+            ? "PART_TIME"
+            : "FULL_TIME",
+        allowIntermediateShifts: empRole === "TEAM_LEAD",
         competencyIds: empComps,
         dutyCycleStartDate: setupStart,
       });
@@ -321,6 +390,7 @@ export default function SetupPage() {
   function canNext(): boolean {
     if (!status) return false;
     if (step === "welcome") return true;
+    if (step === "admin") return Boolean(status.canProceed.admin);
     if (step === "competencies") return status.canProceed.competencies;
     if (step === "shifts") return status.canProceed.shifts;
     if (step === "employees") return status.canProceed.employees;
@@ -385,15 +455,69 @@ export default function SetupPage() {
             Ersteinrichtung
           </h2>
           <ul className="list-disc space-y-2 pl-5 text-sm text-[var(--ink-soft)]">
-            <li>Kompetenzen anlegen (z. B. NSC, A1, SYS)</li>
-            <li>Schichten mit Sollbesetzung definieren</li>
-            <li>Mitarbeiter inkl. Dienstmodell erfassen</li>
+            <li>Administratorkonto für diese Installation anlegen</li>
+            <li>Betriebsmodell: Tag 06–18, Nacht 18–06, Teamleiter 9 Std. dazwischen, Teilzeit untertags</li>
+            <li>Kompetenzen anlegen (oder Vorlage übernehmen)</li>
+            <li>Mitarbeiter inkl. Rolle (Schicht / Teamleiter / Teilzeit) erfassen</li>
             <li>Bestehenden 2-Wochen-Plan als Startpunkt eintragen</li>
-            <li>Rotation daraus ableiten und fertig</li>
+            <li>Danach immer die nächsten 2 Wochen weiterplanen (Urlaub wird berücksichtigt)</li>
           </ul>
           <p className="mt-4 text-sm text-[var(--muted)]">
-            Die Daten bleiben lokal auf diesem Computer.
+            Die Daten bleiben lokal auf diesem Computer, sofern Sie nicht MySQL
+            oder Webzugriff aktivieren.
           </p>
+          <div className="mt-4">
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={busy}
+              onClick={() => void applyCompanyModel()}
+            >
+              Betriebsmodell (6–18 / 18–6) vorbereiten
+            </Button>
+          </div>
+        </Panel>
+      ) : null}
+
+      {step === "admin" ? (
+        <Panel>
+          <h2 className="mb-3 font-[family-name:var(--font-display)] text-xl">
+            Administratorkonto
+          </h2>
+          {status.canProceed.admin ? (
+            <p className="text-sm text-[var(--ok)]">
+              Es ist bereits ein Admin-Konto vorhanden. Sie können fortfahren.
+            </p>
+          ) : (
+            <form onSubmit={createAdmin} className="max-w-sm space-y-3">
+              <Input
+                label="Benutzername"
+                value={adminName}
+                onChange={(e) => setAdminName(e.target.value)}
+                autoComplete="username"
+                required
+              />
+              <Input
+                label="Passwort"
+                type="password"
+                value={adminPass}
+                onChange={(e) => setAdminPass(e.target.value)}
+                autoComplete="new-password"
+                required
+              />
+              <Input
+                label="Passwort wiederholen"
+                type="password"
+                value={adminPass2}
+                onChange={(e) => setAdminPass2(e.target.value)}
+                autoComplete="new-password"
+                required
+              />
+              <Button type="submit" disabled={busy}>
+                Admin anlegen
+              </Button>
+            </form>
+          )}
         </Panel>
       ) : null}
 
@@ -462,6 +586,14 @@ export default function SetupPage() {
             <h2 className="mb-3 font-[family-name:var(--font-display)] text-lg">
               Schicht hinzufügen
             </h2>
+            <Button
+              className="mb-3"
+              variant="secondary"
+              disabled={busy}
+              onClick={() => void applyCompanyModel()}
+            >
+              Betriebsmodell einspielen
+            </Button>
             <form onSubmit={addShift} className="space-y-3">
               <Input
                 label="Name"
@@ -572,6 +704,27 @@ export default function SetupPage() {
                 onChange={(e) => setEmpName(e.target.value)}
                 required
               />
+              <Select
+                label="Rolle"
+                value={empRole}
+                onChange={(e) => {
+                  const role = e.target.value;
+                  setEmpRole(role);
+                  if (role === "PART_TIME") {
+                    setEmpModel("WEEKDAYS");
+                    setEmpPref("DAY_ONLY");
+                  } else if (role === "TEAM_LEAD") {
+                    setEmpModel("ROTATION_4_4");
+                    setEmpPref("ANY");
+                  } else {
+                    setEmpModel("ROTATION_4_4");
+                  }
+                }}
+              >
+                <option value="OPERATOR">Schicht 12 Std. (6–18 / 18–6)</option>
+                <option value="TEAM_LEAD">Teamleiter 9 Std. (zwischen den Schichten)</option>
+                <option value="PART_TIME">Teilzeit untertags</option>
+              </Select>
               <Select
                 label="Dienstmodell"
                 value={empModel}
@@ -766,6 +919,7 @@ export default function SetupPage() {
             Einrichtung abschließen
           </h2>
           <ul className="mb-4 space-y-1 text-sm text-[var(--ink-soft)]">
+            <li>Admin: {status.counts.users}</li>
             <li>Kompetenzen: {status.counts.competencies}</li>
             <li>Schichten: {status.counts.shifts}</li>
             <li>Mitarbeiter: {status.counts.employees}</li>
@@ -779,6 +933,7 @@ export default function SetupPage() {
           <Button
             disabled={
               busy ||
+              !status.canProceed.admin ||
               !status.canProceed.competencies ||
               !status.canProceed.shifts ||
               !status.canProceed.employees

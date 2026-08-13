@@ -52,7 +52,10 @@ skills-lock.json
 *.tsbuildinfo
 next-env.d.ts
 
-/src/generated/prisma
+/src/generated/
+
+# Local runtime config
+/schichtwerk.config.json
 
 # Windows-Dienst Buildpaket / Server-Tools
 /dist-windows-dienst/

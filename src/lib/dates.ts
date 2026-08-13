@@ -26,6 +26,10 @@ export function formatDateRange(startIso: string, dayCount: number): string {
   return `${format(start, "dd.MM.", { locale: de })} – ${format(end, "dd.MM.yyyy", { locale: de })}`;
 }
 
+export function formatTwoWeekRange(startIso: string, dayCount = 14): string {
+  return formatDateRange(startIso, dayCount);
+}
+
 export const ABSENCE_LABELS: Record<string, string> = {
   VACATION: "Urlaub",
   SICK: "Krankenstand",

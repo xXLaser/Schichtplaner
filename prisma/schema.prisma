@@ -37,6 +37,9 @@ model Employee {
   targetHours Float?
   hoursPeriod HoursPeriod @default(MONTH)
 
+  // Rolle im Schichtbetrieb: Operator 12h, Teamleiter 9h, Teilzeit untertags
+  staffRole StaffRole @default(OPERATOR)
+
   // Beschäftigungsart & Dienstmodell (Basis für Planerstellung)
   employmentType          EmploymentType @default(FULL_TIME)
   dutyModel               DutyModel      @default(ROTATION_4_4)
@@ -58,6 +61,12 @@ model Employee {
   assignments          Assignment[]
   baseScheduleEntries  BaseScheduleEntry[]
   defaultShiftTemplate ShiftTemplate?       @relation("EmployeeDefaultShift", fields: [defaultShiftTemplateId], references: [id], onDelete: SetNull)
+}
+
+enum StaffRole {
+  OPERATOR
+  TEAM_LEAD
+  PART_TIME
 }
 
 enum EmploymentType {
@@ -188,4 +197,18 @@ model AppSetting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+enum UserRole {
+  ADMIN
+  PLANNER
+}
+
+/// Lokales Admin-/Planerkonto (Ersteinrichtung).
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  role         UserRole @default(ADMIN)
+  createdAt    DateTime @default(now())
 }

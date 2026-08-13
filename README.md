@@ -1,18 +1,26 @@
 # Schichtwerk – Dienstplan für Schichtbetriebe
 
-Web-App zum Erstellen von Dienstplänen mit:
+Lokales Planungsprogramm (optional als **eine EXE**) für:
 
-- **Ursprungsdienstplan** – manuelle Basis; die Generierung startet immer davon
-- **Dienstmodelle** – 4 Tage Dienst / 4 frei (Vollzeit), Mo–Fr 9–15 (Teilzeit), optional Zwischendienste
-- **Überstundenpauschale** – einmal im Monat bis zu 5 Dienste in einer Woche (Vollzeit)
-- **Ruhezeit 12 Stunden** – gesetzliche Pause zwischen Diensten (z. B. 11–23 → kein 6–18 am Folgetag)
-- **Mitarbeiter & Kompetenzen** – jeder Person mehrere Fähigkeiten zuweisen
-- **Schichtanforderungen** – einstellen, wie viele Personen je Kompetenz pro Schicht anwesend sein müssen
-- **Schichtpräferenzen** – nur Tag, nur Nacht oder Wechseldienst je Mitarbeiter
-- **Sollstunden** – Zielstunden pro Monat oder Quartal
-- **Nachträgliches Anpassen** – Personen manuell hinzufügen/entfernen
-- **Urlaubsplaner** – Kalender, Resturlaub, Anträge genehmigen
-- **Mobile Nutzung** – Bottom-Navigation, Tag-Ansicht, Homescreen-App
+- **Ersteinrichtung** – Admin-Konto, Kompetenzen, Schichten, Mitarbeiter und aktueller 2-Wochen-Plan
+- **Betriebsmodell** – Tag 06:00–18:00, Nacht 18:00–06:00, Teamleiter 9 Stunden dazwischen (12:00–21:00), untertags immer Teilzeit
+- **Nächste 2 Wochen** – immer von diesem Fenster aus weiterplanen, Urlaub und Krankenstand werden berücksichtigt
+- **Feiertage** – österreichische (oder deutsche) Feiertage im Plan hervorgehoben
+- **Export/Import** – Dienstplan als JSON oder CSV
+- **Datenbank** – Onboard-SQLite oder externes MySQL; Webzugriff im LAN optional
+
+Weitere Funktionen: Ursprungsdienstplan, 4/4-Rotation, 12-Stunden-Ruhezeit, Kompetenzen, Sollstunden, mobile Ansicht.
+
+## Standalone-EXE (Windows)
+
+```bash
+npm install
+npm run build:exe
+```
+
+Ergebnis: `release/Schichtwerk.exe`. Beim ersten Start: SQLite oder MySQL und ob die App nur lokal oder im Netz erreichbar sein soll. Danach öffnet sich der Setup-Assistent.
+
+Die lokale Datenbank liegt unter `%LOCALAPPDATA%\schichtwerk-desktop\data\dev.db`.
 
 ## Windows-Server – Dauerbetrieb
 
@@ -63,15 +71,16 @@ Die Datenbank wird **nicht** bei jedem Start überschrieben. Seed läuft nur, we
 
 ## Ablauf
 
-1. Kompetenzen und Schichten anlegen (inkl. Zwischendienste / Teilzeit 9–15)
-2. Mitarbeiter anlegen: **Dienstmodell** (4/4 oder Mo–Fr), Präferenz, Sollstunden
-3. Unter **Ursprungsplan** Basis manuell pflegen oder aus Modellen vorschlagen
-4. Dienstplan generieren – übernimmt den Ursprung, füllt Lücken, beachtet Abwesenheiten und **12 Std. Ruhezeit**
-5. Bei Bedarf nachträglich anpassen; unter „Stunden“ Soll/Ist prüfen
+1. Beim ersten Start Admin anlegen und optional das Betriebsmodell einspielen (Tag/Nacht/Teamleiter/Teilzeit)
+2. Mitarbeiter mit Rolle erfassen: Schicht 12 Std., Teamleiter 9 Std. oder Teilzeit untertags
+3. Aktuellen 2-Wochen-Plan eintragen – daraus werden Rotation und Präferenzen abgeleitet
+4. Unter Dienstplan die nächsten 2 Wochen planen (Urlaub wird berücksichtigt)
+5. Bei Bedarf exportieren/importieren oder nachträglich anpassen
 
 ## Technik
 
 - Next.js (App Router) + TypeScript
-- Prisma + SQLite
+- Prisma + SQLite (optional MySQL)
+- Electron portable EXE
 - Tailwind CSS
 - PWA-Manifest für mobile Homescreen-Nutzung

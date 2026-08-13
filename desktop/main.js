@@ -1,14 +1,30 @@
-const { app, BrowserWindow, dialog } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const http = require("http");
 const path = require("path");
 
-const PORT = process.env.SCHICHTWERK_PORT || "3847";
-const HOST = "127.0.0.1";
-
 let mainWindow = null;
+let setupWindow = null;
 let serverProcess = null;
+let bootingAfterSetup = false;
+
+function configPath() {
+  return path.join(app.getPath("userData"), "config.json");
+}
+
+function readConfig() {
+  try {
+    return JSON.parse(fs.readFileSync(configPath(), "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeConfig(config) {
+  fs.mkdirSync(path.dirname(configPath()), { recursive: true });
+  fs.writeFileSync(configPath(), JSON.stringify(config, null, 2), "utf8");
+}
 
 function userDataDbPath() {
   const dir = path.join(app.getPath("userData"), "data");
@@ -70,7 +86,7 @@ function startServer(root, env) {
   });
 }
 
-function createWindow() {
+function createWindow(host, port) {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
@@ -84,7 +100,7 @@ function createWindow() {
     },
   });
 
-  mainWindow.loadURL(`http://${HOST}:${PORT}/`);
+  mainWindow.loadURL(`http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${port}/`);
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -100,35 +116,100 @@ function stopServer() {
   }
 }
 
-async function boot() {
+function showFirstRun() {
+  setupWindow = new BrowserWindow({
+    width: 560,
+    height: 640,
+    resizable: false,
+    title: "Schichtwerk einrichten",
+    webPreferences: {
+      preload: path.join(__dirname, "first-run-preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  setupWindow.loadFile(path.join(__dirname, "first-run.html"));
+  setupWindow.on("closed", () => {
+    setupWindow = null;
+    if (!readConfig()) app.quit();
+  });
+}
+
+async function boot(saved) {
   const root = appRoot();
-  const dbFile = userDataDbPath();
+  const webAccess = Boolean(saved.webAccess);
+  const host = webAccess ? "0.0.0.0" : "127.0.0.1";
+  const port = String(saved.port || 3847);
+  const provider = saved.databaseProvider === "mysql" ? "mysql" : "sqlite";
+  const sqliteUrl = `file:${userDataDbPath()}`;
+  const databaseUrl =
+    provider === "mysql" && saved.databaseUrl ? saved.databaseUrl : sqliteUrl;
+
   const env = {
     ...process.env,
     NODE_ENV: "production",
-    PORT: String(PORT),
-    HOSTNAME: HOST,
-    DATABASE_URL: `file:${dbFile}`,
+    PORT: port,
+    HOSTNAME: host,
+    SCHICHTWERK_WEB_ACCESS: webAccess ? "1" : "0",
+    SCHICHTWERK_DB_PROVIDER: provider,
+    SCHICHTWERK_CONFIG_PATH: configPath(),
+    DATABASE_URL: databaseUrl,
+    MYSQL_DATABASE_URL: provider === "mysql" ? databaseUrl : "mysql://root:root@127.0.0.1:3306/schichtwerk",
   };
+
+  const schemaArg =
+    provider === "mysql"
+      ? ["--schema", path.join(root, "prisma", "schema.mysql.prisma")]
+      : [];
 
   const prismaCli = path.join(root, "node_modules", "prisma", "build", "index.js");
   if (fs.existsSync(prismaCli)) {
     await new Promise((resolve, reject) => {
-      const mig = runNode([prismaCli, "migrate", "deploy"], {
+      const args =
+        provider === "mysql"
+          ? [prismaCli, "db", "push", "--accept-data-loss", ...schemaArg]
+          : [prismaCli, "migrate", "deploy"];
+      const mig = runNode(args, {
         cwd: root,
         env,
         stdio: "inherit",
       });
       mig.on("exit", (code) =>
-        code === 0 ? resolve() : reject(new Error("Migration fehlgeschlagen")),
+        code === 0 ? resolve() : reject(new Error("Datenbank-Migration fehlgeschlagen")),
       );
     });
   }
 
   startServer(root, env);
-  await waitForServer(`http://${HOST}:${PORT}/api/health`);
-  createWindow();
+  await waitForServer(`http://127.0.0.1:${port}/api/health`);
+  createWindow(host, port);
 }
+
+ipcMain.handle("first-run-save", async (_event, incoming) => {
+  if (!incoming || (incoming.databaseProvider === "mysql" && !incoming.databaseUrl)) {
+    throw new Error("Bitte eine MySQL-Verbindung angeben.");
+  }
+  const config = {
+    databaseProvider: incoming.databaseProvider === "mysql" ? "mysql" : "sqlite",
+    databaseUrl: incoming.databaseUrl || "",
+    webAccess: Boolean(incoming.webAccess),
+    port: Number(incoming.port) || 3847,
+    holidayRegion: "AT",
+    planningDays: 14,
+  };
+  writeConfig(config);
+  bootingAfterSetup = true;
+  if (setupWindow) {
+    setupWindow.close();
+    setupWindow = null;
+  }
+  try {
+    await boot(config);
+  } finally {
+    bootingAfterSetup = false;
+  }
+  return { ok: true };
+});
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -142,7 +223,12 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
-    boot().catch((err) => {
+    const saved = readConfig();
+    if (!saved) {
+      showFirstRun();
+      return;
+    }
+    boot(saved).catch((err) => {
       dialog.showErrorBox(
         "Schichtwerk Startfehler",
         err instanceof Error ? err.message : String(err),
@@ -153,6 +239,7 @@ if (!gotLock) {
   });
 
   app.on("window-all-closed", () => {
+    if (bootingAfterSetup) return;
     stopServer();
     if (process.platform !== "darwin") app.quit();
   });

@@ -18,6 +18,8 @@
     "files": [
       "main.js",
       "preload.js",
+      "first-run.html",
+      "first-run-preload.js",
       "package.json"
     ],
     "extraResources": [

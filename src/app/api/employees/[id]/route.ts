@@ -19,6 +19,7 @@ const schema = z.object({
   targetHours: z.number().min(0).max(1000).optional().nullable(),
   hoursPeriod: z.enum(["MONTH", "QUARTER"]).optional(),
   employmentType: z.enum(["FULL_TIME", "PART_TIME"]).optional(),
+  staffRole: z.enum(["OPERATOR", "TEAM_LEAD", "PART_TIME"]).optional(),
   dutyModel: z.enum(["ROTATION_4_4", "WEEKDAYS", "CUSTOM"]).optional(),
   dutyOnDays: z.number().int().min(1).max(14).optional(),
   dutyOffDays: z.number().int().min(0).max(14).optional(),
@@ -74,6 +75,7 @@ export async function PATCH(
         targetHours:
           body.targetHours === undefined ? undefined : (body.targetHours ?? null),
         hoursPeriod: body.hoursPeriod,
+        staffRole: body.staffRole,
         employmentType: body.employmentType,
         dutyModel: body.dutyModel,
         dutyOnDays: body.dutyOnDays,

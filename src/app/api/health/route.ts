@@ -22,13 +22,14 @@ export async function GET() {
       ok: true,
       message: "Schichtwerk läuft und die Datenbank ist erreichbar.",
       cwd: process.cwd(),
-      databaseUrl: dbUrl,
+      databaseUrl: dbUrl.startsWith("mysql") ? "mysql://…" : dbUrl,
+      databaseProvider: dbUrl.startsWith("mysql") ? "mysql" : "sqlite",
       databaseFileExists: fileExists,
       databaseFile: dbFile,
       counts: { employees, competencies, absences, shifts },
       hint:
         employees === 0
-          ? "Datenbank ist leer. Im Projektordner ausführen: npm run db:seed"
+          ? "Datenbank ist leer. Beim ersten Start den Setup-Assistenten durchlaufen oder npm run db:seed"
           : undefined,
     });
   } catch (error) {

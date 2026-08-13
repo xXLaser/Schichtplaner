@@ -195,7 +195,6 @@ export async function applySetupToDutyModels(
     const d = startOfDay(e.date);
     if (d < start || d > end) continue;
     const shift = shiftById.get(e.shiftTemplateId) ?? e.shiftTemplate;
-    if (shift.kind === "INTERMEDIATE") continue;
     let bucket = byEmployee.get(e.employeeId);
     if (!bucket) {
       bucket = { dates: [], shiftIds: [], kinds: [] };
@@ -232,8 +231,11 @@ export async function applySetupToDutyModels(
 
     const dayCount = bucket.kinds.filter((k) => k === "DAY").length;
     const nightCount = bucket.kinds.filter((k) => k === "NIGHT").length;
+    const zwischenCount = bucket.kinds.filter((k) => k === "INTERMEDIATE").length;
     let shiftPreference: "DAY_ONLY" | "NIGHT_ONLY" | "ANY" = "ANY";
-    if (dayCount > 0 && nightCount === 0) shiftPreference = "DAY_ONLY";
+    if (zwischenCount > 0 && dayCount === 0 && nightCount === 0) {
+      shiftPreference = "ANY";
+    } else if (dayCount > 0 && nightCount === 0) shiftPreference = "DAY_ONLY";
     else if (nightCount > 0 && dayCount === 0) shiftPreference = "NIGHT_ONLY";
     else shiftPreference = "ANY";
 
@@ -257,6 +259,8 @@ export async function applySetupToDutyModels(
       );
     }
 
+    const onlyZwischen = zwischenCount > 0 && dayCount === 0 && nightCount === 0;
+
     await prisma.employee.update({
       where: { id: emp.id },
       data: {
@@ -266,6 +270,9 @@ export async function applySetupToDutyModels(
         dutyCycleStartDate: cycleStart,
         shiftPreference,
         defaultShiftTemplateId,
+        ...(onlyZwischen
+          ? { staffRole: "TEAM_LEAD" as const, allowIntermediateShifts: true }
+          : {}),
       },
     });
 

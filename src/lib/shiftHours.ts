@@ -132,25 +132,42 @@ export async function getHoursReport(reference: Date): Promise<HoursReportEntry[
     where: { active: true },
     orderBy: { name: "asc" },
   });
+  if (employees.length === 0) return [];
 
-  const entries: HoursReportEntry[] = [];
+  const earliest = employees.reduce((min, emp) => {
+    const { start } = periodBounds(reference, emp.hoursPeriod);
+    return start < min ? start : min;
+  }, periodBounds(reference, "QUARTER").start);
+  const latest = employees.reduce((max, emp) => {
+    const { end } = periodBounds(reference, emp.hoursPeriod);
+    return end > max ? end : max;
+  }, periodBounds(reference, "MONTH").end);
 
-  for (const emp of employees) {
+  const assignments = await prisma.assignment.findMany({
+    where: {
+      date: { gte: earliest, lte: addDays(latest, 1) },
+    },
+    include: { shiftTemplate: { select: { startTime: true, endTime: true } } },
+  });
+
+  const hoursByEmpPeriod = new Map<string, number>();
+  const empById = new Map(employees.map((e) => [e.id, e]));
+  for (const a of assignments) {
+    const emp = empById.get(a.employeeId);
+    if (!emp) continue;
     const { start, end } = periodBounds(reference, emp.hoursPeriod);
-    const assignments = await prisma.assignment.findMany({
-      where: {
-        employeeId: emp.id,
-        date: { gte: start, lte: addDays(end, 1) },
-      },
-      include: { shiftTemplate: true },
-    });
-    const workedHours = assignments.reduce(
-      (sum, a) =>
-        sum + shiftDurationHours(a.shiftTemplate.startTime, a.shiftTemplate.endTime),
-      0,
+    if (a.date < start || a.date > addDays(end, 1)) continue;
+    const key = emp.id;
+    hoursByEmpPeriod.set(
+      key,
+      (hoursByEmpPeriod.get(key) ?? 0) +
+        shiftDurationHours(a.shiftTemplate.startTime, a.shiftTemplate.endTime),
     );
+  }
 
-    entries.push({
+  return employees.map((emp) => {
+    const workedHours = hoursByEmpPeriod.get(emp.id) ?? 0;
+    return {
       employeeId: emp.id,
       name: emp.name,
       hoursPeriod: emp.hoursPeriod,
@@ -159,8 +176,6 @@ export async function getHoursReport(reference: Date): Promise<HoursReportEntry[
       workedHours,
       remainingHours: emp.targetHours != null ? emp.targetHours - workedHours : null,
       shiftPreference: emp.shiftPreference,
-    });
-  }
-
-  return entries;
+    };
+  });
 }

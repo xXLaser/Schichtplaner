@@ -7,7 +7,7 @@ import { apiSend, ApiError } from "@/lib/api";
 import {
   ABSENCE_LABELS,
   formatDayLabel,
-  formatWeekRange,
+  formatTwoWeekRange,
   toISODate,
   weekStart,
 } from "@/lib/dates";
@@ -19,7 +19,7 @@ type Shift = {
   startTime: string;
   endTime: string;
   color: string;
-  kind: "DAY" | "NIGHT";
+  kind: "DAY" | "NIGHT" | "INTERMEDIATE";
   requirements: { competencyId: string; minCount: number; competency: Competency }[];
 };
 type Assignment = {
@@ -63,6 +63,8 @@ type ScheduleData = {
   absences: Absence[];
   competencies: Competency[];
   employees: EmployeeOption[];
+  holidays?: { date: string; name: string }[];
+  planningDays?: number;
 };
 
 export default function DienstplanPage() {
@@ -78,7 +80,11 @@ export default function DienstplanPage() {
   const [pickEmployeeId, setPickEmployeeId] = useState("");
   const [busyCell, setBusyCell] = useState<string | null>(null);
 
-  const end = useMemo(() => toISODate(addDays(new Date(week + "T00:00:00"), 6)), [week]);
+  const planningDays = data?.planningDays ?? 14;
+  const end = useMemo(
+    () => toISODate(addDays(new Date(week + "T00:00:00"), planningDays - 1)),
+    [week, planningDays],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -138,6 +144,58 @@ export default function DienstplanPage() {
       await load();
     } finally {
       setGenerating(false);
+    }
+  }
+
+  function shiftKindLabel(kind: string) {
+    if (kind === "NIGHT") return "Nacht";
+    if (kind === "INTERMEDIATE") return "Teamleiter";
+    return "Tag";
+  }
+
+  const holidayByDate = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const h of data?.holidays ?? []) map.set(h.date, h.name);
+    return map;
+  }, [data?.holidays]);
+
+  async function downloadExport(format: "json" | "csv") {
+    try {
+      const res = await fetch(
+        `/api/schedule/export?from=${week}&to=${end}&format=${format}`,
+      );
+      if (!res.ok) throw new Error("Export fehlgeschlagen");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download =
+        format === "csv"
+          ? `dienstplan-${week}-${end}.csv`
+          : `dienstplan-${week}-${end}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Export fehlgeschlagen");
+    }
+  }
+
+  async function importFile(file: File) {
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text) as Record<string, unknown>;
+      const result = await apiSend<{ imported: number; skipped: number; errors: string[] }>(
+        "/api/schedule/import",
+        "POST",
+        { ...json, replaceExisting: true },
+      );
+      setMessage(
+        `Import: ${result.imported} Zuweisungen` +
+          (result.skipped ? ` · ${result.skipped} übersprungen` : ""),
+      );
+      await load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Import fehlgeschlagen");
     }
   }
 
@@ -301,13 +359,15 @@ export default function DienstplanPage() {
     <div className="animate-fade-up">
       <PageHeader
         title="Dienstplan"
-        subtitle="Basiert auf dem Ursprungsdienstplan; Abwesenheiten, Dienstmodelle und 12-Stunden-Ruhezeit werden automatisch beachtet."
+        subtitle="Immer die nächsten zwei Wochen: Ursprungsplan, Urlaub, 12-Stunden-Ruhezeit und Betriebsmodell (6–18 / 18–6)."
         actions={
           <>
             <Button
               variant="secondary"
               onClick={() =>
-                setWeek(toISODate(addDays(new Date(week + "T00:00:00"), -7)))
+                setWeek(
+                  toISODate(addDays(new Date(week + "T00:00:00"), -planningDays)),
+                )
               }
             >
               ← Vorherige
@@ -316,12 +376,14 @@ export default function DienstplanPage() {
               variant="secondary"
               onClick={() => setWeek(toISODate(weekStart()))}
             >
-              Diese Woche
+              Diese 2 Wochen
             </Button>
             <Button
               variant="secondary"
               onClick={() =>
-                setWeek(toISODate(addDays(new Date(week + "T00:00:00"), 7)))
+                setWeek(
+                  toISODate(addDays(new Date(week + "T00:00:00"), planningDays)),
+                )
               }
             >
               Nächste →
@@ -335,8 +397,27 @@ export default function DienstplanPage() {
             >
               {editMode ? "Bearbeiten beenden" : "Nachträglich anpassen"}
             </Button>
+            <Button variant="secondary" onClick={() => void downloadExport("json")}>
+              Export JSON
+            </Button>
+            <Button variant="secondary" onClick={() => void downloadExport("csv")}>
+              Export CSV
+            </Button>
+            <label className="inline-flex cursor-pointer items-center justify-center rounded-md bg-[var(--surface-2)] px-3.5 py-2 text-sm font-medium text-[var(--ink)] border border-[var(--line)]">
+              Import
+              <input
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void importFile(file);
+                  e.target.value = "";
+                }}
+              />
+            </label>
             <Button onClick={generate} disabled={generating}>
-              {generating ? "Plant…" : "Plan neu generieren"}
+              {generating ? "Plant…" : "2 Wochen planen"}
             </Button>
           </>
         }
@@ -344,7 +425,7 @@ export default function DienstplanPage() {
 
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <p className="font-[family-name:var(--font-display)] text-lg text-[var(--ink)]">
-          {formatWeekRange(week)}
+          {formatTwoWeekRange(week, planningDays)}
         </p>
         {message ? (
           <span className="rounded-md bg-[var(--surface-2)] px-3 py-1 text-sm text-[var(--ink-soft)]">
@@ -401,7 +482,9 @@ export default function DienstplanPage() {
                   className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium ${
                     mobileDay === d
                       ? "bg-[var(--accent)] text-white"
-                      : "bg-[var(--surface)] border border-[var(--line)] text-[var(--ink-soft)]"
+                      : holidayByDate.has(d)
+                        ? "bg-amber-100 border border-amber-300 text-amber-950"
+                        : "bg-[var(--surface)] border border-[var(--line)] text-[var(--ink-soft)]"
                   }`}
                 >
                   {formatDayLabel(d)}
@@ -423,7 +506,7 @@ export default function DienstplanPage() {
                       <div className="font-semibold">
                         {shift.name}{" "}
                         <span className="text-xs font-normal text-[var(--muted)]">
-                          ({shift.kind === "NIGHT" ? "Nacht" : "Tag"})
+                          ({shiftKindLabel(shift.kind)})
                         </span>
                       </div>
                       <div className="text-xs text-[var(--muted)]">
@@ -473,9 +556,18 @@ export default function DienstplanPage() {
                   {data.days.map((d) => (
                     <th
                       key={d}
-                      className="min-w-[160px] px-3 py-3 text-left font-semibold text-[var(--ink)]"
+                      className={`min-w-[140px] px-3 py-3 text-left font-semibold ${
+                        holidayByDate.has(d)
+                          ? "bg-amber-100 text-amber-950"
+                          : "text-[var(--ink)]"
+                      }`}
                     >
                       {formatDayLabel(d)}
+                      {holidayByDate.get(d) ? (
+                        <div className="text-[10px] font-medium text-amber-800">
+                          {holidayByDate.get(d)}
+                        </div>
+                      ) : null}
                     </th>
                   ))}
                 </tr>
@@ -493,7 +585,7 @@ export default function DienstplanPage() {
                           <div className="font-semibold">
                             {shift.name}{" "}
                             <span className="text-xs font-normal text-[var(--muted)]">
-                              ({shift.kind === "NIGHT" ? "Nacht" : "Tag"})
+                              ({shiftKindLabel(shift.kind)})
                             </span>
                           </div>
                           <div className="text-xs text-[var(--muted)]">

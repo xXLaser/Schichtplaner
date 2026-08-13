@@ -24,6 +24,7 @@ function base(partial: Partial<DutyModelConfig> = {}): DutyModelConfig {
     allowIntermediateShifts: false,
     defaultShiftTemplateId: null,
     maxShifts: 5,
+    staffRole: "OPERATOR",
     ...partial,
   };
 }

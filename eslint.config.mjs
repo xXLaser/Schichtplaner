@@ -21,6 +21,9 @@ const eslintConfig = defineConfig([
     "scripts/**",
     "dist-windows-dienst/**",
     "tools/**",
+    "src/generated/**",
+    "desktop/**",
+    "release/**",
   ]),
 ]);
 

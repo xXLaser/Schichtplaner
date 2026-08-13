@@ -4,10 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev --hostname 0.0.0.0",
-    "build": "prisma generate && next build",
+    "build": "node scripts/ensure-env.cjs && prisma generate && prisma generate --schema prisma/schema.mysql.prisma && next build",
     "build:exe": "node scripts/build-exe.cjs",
     "start": "next start --hostname 0.0.0.0 --port 3000",
     "lint": "eslint",
+    "test:unit": "tsx scripts/test-duty-model.ts && tsx scripts/test-holidays.ts && tsx scripts/test-staff-rules.ts",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
@@ -16,7 +17,7 @@
     "db:restore": "node scripts/db-restore.cjs",
     "db:reset": "prisma migrate reset --force && tsx prisma/seed.ts --force",
     "env:ensure": "node scripts/ensure-env.cjs",
-    "postinstall": "prisma generate"
+    "postinstall": "node scripts/ensure-env.cjs && prisma generate && prisma generate --schema prisma/schema.mysql.prisma"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -28,7 +29,8 @@
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "mysql2": "^3.14.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
