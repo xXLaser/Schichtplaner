@@ -1,6 +1,6 @@
 {
   "name": "schichtwerk-desktop",
-  "version": "0.1.0",
+  "version": "1.1.2",
   "private": true,
   "description": "Schichtwerk lokale Desktop-App",
   "main": "main.js",
@@ -18,15 +18,20 @@
     "files": [
       "main.js",
       "preload.js",
+      "splash.html",
       "package.json"
     ],
     "extraResources": [
       {
         "from": "../dist-windows-dienst",
         "to": "app",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
+    "asar": true,
+    "npmRebuild": false,
     "win": {
       "target": [
         {

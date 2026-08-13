@@ -2,7 +2,7 @@
 
 Lokales Dienstplan-Tool (optional mit Web-Zugriff) mit Setup-Assistent und portable EXE:
 
-- **Standalone EXE** – `npm run build:exe` → `release/Schichtwerk.exe`
+- **Standalone EXE** – `npm run build:exe` → `release/Schichtwerk.exe` (oder GitHub Action „Windows EXE bauen“)
 - **Ersteinrichtung** – Admin, DB-Option, Kompetenzen, Firmen-Schichten, Mitarbeiter, 2-Wochen-Plan
 - **Firmen-Schichten** – Tag 06–18, Nacht 18–06, Teamleiter 9h (09–18), Teilzeit untertags 09–15
 - **Feiertage** – hervorgehoben (AT / DE / DE-BY)

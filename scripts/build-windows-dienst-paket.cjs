@@ -90,10 +90,38 @@ async function main() {
     fs.unlinkSync(tmpDb);
   }
 
-  // Prisma-CLI wird fuer "migrate deploy" auf dem Server benoetigt
+  // Prisma-CLI und Query-Engines mitliefern (Next-Trace lässt Native-Binaries oft weg)
   const prismaCliSrc = path.join(root, "node_modules", "prisma");
   const prismaCliDest = path.join(distDir, "node_modules", "prisma");
   copyRecursive(prismaCliSrc, prismaCliDest);
+  copyRecursive(
+    path.join(root, "node_modules", ".prisma"),
+    path.join(distDir, "node_modules", ".prisma"),
+  );
+  copyRecursive(
+    path.join(root, "node_modules", "@prisma"),
+    path.join(distDir, "node_modules", "@prisma"),
+  );
+
+  // Leere, bereits migrierte SQLite-Vorlage für den ersten EXE-Start
+  const templateDb = path.join(distDir, "prisma", "template.db");
+  const templateUrl = `file:${templateDb.replace(/\\/g, "/")}`;
+  console.log("Erzeuge leere Vorlagen-Datenbank …");
+  const migrate = spawnSync(
+    "npx",
+    ["prisma", "migrate", "deploy"],
+    {
+      cwd: root,
+      stdio: "inherit",
+      shell: true,
+      env: { ...process.env, DATABASE_URL: templateUrl },
+    },
+  );
+  if (migrate.status !== 0) {
+    console.warn("WARNUNG: Vorlagen-Datenbank konnte nicht erzeugt werden.");
+  } else {
+    console.log("Vorlagen-Datenbank:", templateDb);
+  }
 
   // Seed-Skript + tsx fuer Erstbefuellung
   copyRecursive(
